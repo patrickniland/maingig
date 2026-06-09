@@ -14,8 +14,15 @@ const LANGUAGE_TRIGGERS: Record<Language, RegExp> = {
   afrikaans: /\b(afrikaans|afrikaans please)\b/i,
 };
 
-// Detects "my name is X", "I'm X", "I am X", "call me X"
 const NAME_PATTERN = /(?:my name is|i'm|i am|call me)\s+([A-Z][a-z]+)/i;
+
+type DataCapture = {
+  full_name?: string;
+  location_area?: string;
+  skills?: string[];
+  education_level?: string;
+  availability?: string;
+};
 
 function detectRequestedLanguage(message: string): Language | null {
   for (const [lang, pattern] of Object.entries(LANGUAGE_TRIGGERS) as [Language, RegExp][]) {
@@ -27,6 +34,52 @@ function detectRequestedLanguage(message: string): Language | null {
 function extractName(message: string): string | null {
   const match = message.match(NAME_PATTERN);
   return match ? match[1] : null;
+}
+
+function parseClaudeReply(raw: string): { message: string; data: DataCapture | null } {
+  const separatorIndex = raw.lastIndexOf("|||");
+  if (separatorIndex === -1) return { message: raw.trim(), data: null };
+
+  const message = raw.slice(0, separatorIndex).trim();
+  const jsonStr = raw.slice(separatorIndex + 3).trim();
+
+  try {
+    const parsed = JSON.parse(jsonStr);
+    const data: DataCapture = parsed?.data_capture ?? {};
+    return { message, data };
+  } catch {
+    return { message, data: null };
+  }
+}
+
+async function saveProfileData(userId: string, data: DataCapture, existingFullName: string | null) {
+  const userUpdates: Record<string, string> = {};
+  const profileUpdates: Record<string, unknown> = {};
+
+  if (data.full_name?.trim() && !existingFullName) {
+    userUpdates.full_name = data.full_name.trim();
+  }
+
+  if (data.location_area?.trim()) profileUpdates.location_area = data.location_area.trim();
+  if (data.education_level?.trim()) profileUpdates.education_level = data.education_level.trim();
+  if (data.availability?.trim()) profileUpdates.availability = data.availability.trim();
+  if (data.skills?.length) profileUpdates.skills = data.skills;
+
+  const promises: Promise<unknown>[] = [];
+
+  if (Object.keys(userUpdates).length > 0) {
+    promises.push(supabase.from("users").update(userUpdates).eq("id", userId));
+  }
+
+  if (Object.keys(profileUpdates).length > 0) {
+    promises.push(
+      supabase
+        .from("user_profiles")
+        .upsert({ user_id: userId, ...profileUpdates, updated_at: new Date().toISOString() }, { onConflict: "user_id" })
+    );
+  }
+
+  await Promise.all(promises);
 }
 
 export async function POST(req: NextRequest) {
@@ -73,21 +126,17 @@ export async function POST(req: NextRequest) {
         ? requestedLanguage
         : null;
 
-    if (languageSwitched) {
-      updates.preferred_language = languageSwitched;
-    }
+    if (languageSwitched) updates.preferred_language = languageSwitched;
 
     const detectedName = extractName(body);
-    if (detectedName && !user.full_name) {
-      updates.full_name = detectedName;
-    }
+    if (detectedName && !user.full_name) updates.full_name = detectedName;
 
     if (Object.keys(updates).length > 0) {
       await supabase.from("users").update(updates).eq("id", user.id);
       user = { ...user, ...updates };
     }
 
-    // 3. If no language chosen yet and none detected in this message → send greeting
+    // 3. If no language chosen yet → send greeting
     if (!user.preferred_language) {
       await supabase.from("conversations").insert([
         { user_id: user.id, message_role: "user", message_content: body },
@@ -107,8 +156,8 @@ export async function POST(req: NextRequest) {
 
     const orderedHistory: Message[] = (history ?? []).reverse();
 
-    // 5. Call Claude with full user context
-    const reply = await callClaude(orderedHistory, body, {
+    // 5. Call Claude
+    const rawReply = await callClaude(orderedHistory, body, {
       full_name: user.full_name ?? null,
       preferred_language: user.preferred_language as Language,
       isReturning,
@@ -116,14 +165,24 @@ export async function POST(req: NextRequest) {
       languageSwitched: isReturning ? languageSwitched : null,
     });
 
-    // 6. Persist both messages
+    // 6. Strip data capture block from reply
+    const { message, data } = parseClaudeReply(rawReply);
+
+    // 7. Save profile data captured in this turn (fire and forget — don't block response)
+    if (data) {
+      saveProfileData(user.id, data, user.full_name ?? null).catch((err) =>
+        console.error("Profile save error:", err)
+      );
+    }
+
+    // 8. Persist conversation (store clean message, not the raw reply with JSON)
     await supabase.from("conversations").insert([
       { user_id: user.id, message_role: "user", message_content: body },
-      { user_id: user.id, message_role: "assistant", message_content: reply },
+      { user_id: user.id, message_role: "assistant", message_content: message },
     ]);
 
-    // 7. Send reply via Twilio
-    await sendWhatsAppMessage(from, reply);
+    // 9. Send clean message to user
+    await sendWhatsAppMessage(from, message);
 
     return new NextResponse("OK", { status: 200 });
   } catch (err) {
