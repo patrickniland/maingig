@@ -9,3 +9,4 @@
 {"timestamp":"00:00:01.528","source":"Server","level":"LOG","message":""}
 {"timestamp":"00:00:01.590","source":"Server","level":"LOG","message":""}
 {"timestamp":"00:05:49.425","source":"Server","level":"LOG","message":"  Reload env: .env.local"}
+{"timestamp":"05:16:25.608","source":"Server","level":"LOG","message":"  Reload env: .env.local"}

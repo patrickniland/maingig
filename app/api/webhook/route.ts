@@ -165,8 +165,12 @@ export async function POST(req: NextRequest) {
       languageSwitched: isReturning ? languageSwitched : null,
     });
 
+    console.log("[1] Raw Claude reply:", rawReply);
+
     // 6. Strip data capture block from reply
     const { message, data } = parseClaudeReply(rawReply);
+
+    console.log("[2] Cleaned message after parseClaudeReply:", message);
 
     // 7. Save profile data captured in this turn (fire and forget — don't block response)
     if (data) {
@@ -182,7 +186,14 @@ export async function POST(req: NextRequest) {
     ]);
 
     // 9. Send clean message to user
-    await sendWhatsAppMessage(from, message);
+    console.log("[3] Sending to WhatsApp:", { to: from, message });
+    try {
+      const result = await sendWhatsAppMessage(from, message);
+      console.log("[4] WhatsApp send success:", result.sid);
+    } catch (twilioErr) {
+      console.error("[4] WhatsApp send error:", twilioErr);
+      throw twilioErr;
+    }
 
     return new NextResponse("OK", { status: 200 });
   } catch (err) {
