@@ -26,6 +26,7 @@ type UserContext = {
   full_name: string | null;
   preferred_language: string;
   isReturning: boolean;
+  languageSwitched: "xhosa" | "english" | null;
 };
 
 function buildSystemPrompt(ctx: UserContext): string {
@@ -39,8 +40,12 @@ function buildSystemPrompt(ctx: UserContext): string {
     parts.push(`This is their very first message. Open warmly — something like "Molo! Glad you found us. What are you wanting to tackle today?"`);
   }
 
-  if (ctx.preferred_language === "xhosa") {
-    parts.push(`This user prefers isiXhosa. Respond primarily in isiXhosa. Use English only where a word or phrase is clearer in English.`);
+  if (ctx.languageSwitched === "xhosa") {
+    parts.push(`The user just switched to isiXhosa. Acknowledge the switch warmly in isiXhosa — something short and natural — then continue in isiXhosa. Use English only where a word or phrase is clearer.`);
+  } else if (ctx.languageSwitched === "english") {
+    parts.push(`The user just switched to English. Acknowledge the switch briefly in English — something like "Sure, English it is!" — then carry on in English.`);
+  } else if (ctx.preferred_language === "xhosa") {
+    parts.push(`This user prefers isiXhosa. Respond primarily in isiXhosa. Use English only where a word or phrase is clearer.`);
   }
 
   return parts.join("\n\n");

@@ -5,12 +5,15 @@ import { sendWhatsAppMessage } from "@/lib/twilio";
 import type { Message } from "@/lib/supabase";
 
 const XHOSA_TRIGGER = /\b(xhosa|isixhosa)\b/i;
+const ENGLISH_TRIGGER = /\b(english|switch to english|english please)\b/i;
 
 // Detects "my name is X", "I'm X", "I am X", "call me X" — captures first capitalised word after the pattern
 const NAME_PATTERN = /(?:my name is|i'm|i am|call me)\s+([A-Z][a-z]+)/i;
 
-function detectLanguage(message: string): "xhosa" | null {
-  return XHOSA_TRIGGER.test(message) ? "xhosa" : null;
+function detectRequestedLanguage(message: string): "xhosa" | "english" | null {
+  if (XHOSA_TRIGGER.test(message)) return "xhosa";
+  if (ENGLISH_TRIGGER.test(message)) return "english";
+  return null;
 }
 
 function extractName(message: string): string | null {
@@ -53,12 +56,17 @@ export async function POST(req: NextRequest) {
       user = newUser;
     }
 
-    // 2. Detect language preference and name from this message
+    // 2. Detect language switch and name from this message
     const updates: Record<string, string> = {};
 
-    const detectedLanguage = detectLanguage(body);
-    if (detectedLanguage && user.preferred_language !== detectedLanguage) {
-      updates.preferred_language = detectedLanguage;
+    const requestedLanguage = detectRequestedLanguage(body);
+    const languageSwitched =
+      requestedLanguage && requestedLanguage !== user.preferred_language
+        ? requestedLanguage
+        : null;
+
+    if (languageSwitched) {
+      updates.preferred_language = languageSwitched;
     }
 
     const detectedName = extractName(body);
@@ -86,6 +94,7 @@ export async function POST(req: NextRequest) {
       full_name: user.full_name ?? null,
       preferred_language: user.preferred_language ?? "english",
       isReturning,
+      languageSwitched,
     });
 
     // 5. Persist both messages
