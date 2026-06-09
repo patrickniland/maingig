@@ -22,9 +22,34 @@ You never sound like a bot. No "Certainly!", no "Great question!", no "I'd be ha
 
 When someone gets placed in a job, that's called a placement. That's the win you're working towards with them.`;
 
+type UserContext = {
+  full_name: string | null;
+  preferred_language: string;
+  isReturning: boolean;
+};
+
+function buildSystemPrompt(ctx: UserContext): string {
+  const parts = [SISI_SYSTEM_PROMPT];
+
+  if (ctx.isReturning && ctx.full_name) {
+    parts.push(`The user's name is ${ctx.full_name}. They have messaged before. Greet them by name naturally, like you remember them — because you do.`);
+  } else if (ctx.isReturning) {
+    parts.push(`This is a returning user. You have history with them above. Pick up where you left off, don't re-introduce yourself.`);
+  } else {
+    parts.push(`This is their very first message. Open warmly — something like "Molo! Glad you found us. What are you wanting to tackle today?"`);
+  }
+
+  if (ctx.preferred_language === "xhosa") {
+    parts.push(`This user prefers isiXhosa. Respond primarily in isiXhosa. Use English only where a word or phrase is clearer in English.`);
+  }
+
+  return parts.join("\n\n");
+}
+
 export async function callClaude(
   history: Message[],
-  userMessage: string
+  userMessage: string,
+  userContext: UserContext
 ): Promise<string> {
   const messages: Anthropic.MessageParam[] = [
     ...history.map((m) => ({
@@ -37,7 +62,7 @@ export async function callClaude(
   const response = await client.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 1024,
-    system: SISI_SYSTEM_PROMPT,
+    system: buildSystemPrompt(userContext),
     messages,
   });
 

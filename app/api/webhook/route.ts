@@ -4,6 +4,20 @@ import { callClaude } from "@/lib/claude";
 import { sendWhatsAppMessage } from "@/lib/twilio";
 import type { Message } from "@/lib/supabase";
 
+const XHOSA_TRIGGER = /\b(xhosa|isixhosa)\b/i;
+
+// Detects "my name is X", "I'm X", "I am X", "call me X" — captures first capitalised word after the pattern
+const NAME_PATTERN = /(?:my name is|i'm|i am|call me)\s+([A-Z][a-z]+)/i;
+
+function detectLanguage(message: string): "xhosa" | null {
+  return XHOSA_TRIGGER.test(message) ? "xhosa" : null;
+}
+
+function extractName(message: string): string | null {
+  const match = message.match(NAME_PATTERN);
+  return match ? match[1] : null;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
@@ -14,7 +28,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
 
-    // Normalise to E.164 phone number (strip whatsapp: prefix if present)
     const phone_number = from.replace(/^whatsapp:/i, "");
 
     // 1. Look up or create user
@@ -24,10 +37,12 @@ export async function POST(req: NextRequest) {
       .eq("phone_number", phone_number)
       .single();
 
+    const isReturning = !!user;
+
     if (!user) {
       const { data: newUser, error } = await supabase
         .from("users")
-        .insert({ phone_number, status: "seeking" })
+        .insert({ phone_number, status: "seeking", preferred_language: "english" })
         .select()
         .single();
 
@@ -38,7 +53,25 @@ export async function POST(req: NextRequest) {
       user = newUser;
     }
 
-    // 2. Load last 20 messages for conversation history
+    // 2. Detect language preference and name from this message
+    const updates: Record<string, string> = {};
+
+    const detectedLanguage = detectLanguage(body);
+    if (detectedLanguage && user.preferred_language !== detectedLanguage) {
+      updates.preferred_language = detectedLanguage;
+    }
+
+    const detectedName = extractName(body);
+    if (detectedName && !user.full_name) {
+      updates.full_name = detectedName;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await supabase.from("users").update(updates).eq("id", user.id);
+      user = { ...user, ...updates };
+    }
+
+    // 3. Load last 20 messages
     const { data: history } = await supabase
       .from("conversations")
       .select("*")
@@ -48,16 +81,20 @@ export async function POST(req: NextRequest) {
 
     const orderedHistory: Message[] = (history ?? []).reverse();
 
-    // 3. Call Claude with Sisi prompt + history
-    const reply = await callClaude(orderedHistory, body);
+    // 4. Call Claude with full user context
+    const reply = await callClaude(orderedHistory, body, {
+      full_name: user.full_name ?? null,
+      preferred_language: user.preferred_language ?? "english",
+      isReturning,
+    });
 
-    // 4. Persist both messages
+    // 5. Persist both messages
     await supabase.from("conversations").insert([
       { user_id: user.id, message_role: "user", message_content: body },
       { user_id: user.id, message_role: "assistant", message_content: reply },
     ]);
 
-    // 5. Send reply via Twilio
+    // 6. Send reply via Twilio
     await sendWhatsAppMessage(from, reply);
 
     return new NextResponse("OK", { status: 200 });
