@@ -22,8 +22,8 @@ export async function callClaude(
 ): Promise<string> {
   const messages: Anthropic.MessageParam[] = [
     ...history.map((m) => ({
-      role: m.role as "user" | "assistant",
-      content: m.content,
+      role: m.message_role as "user" | "assistant",
+      content: m.message_content,
     })),
     { role: "user", content: userMessage },
   ];

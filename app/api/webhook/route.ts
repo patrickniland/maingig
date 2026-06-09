@@ -15,19 +15,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Normalise to E.164 phone number (strip whatsapp: prefix if present)
-    const phone = from.replace(/^whatsapp:/i, "");
+    const phone_number = from.replace(/^whatsapp:/i, "");
 
     // 1. Look up or create user
     let { data: user } = await supabase
       .from("users")
       .select("*")
-      .eq("phone", phone)
+      .eq("phone_number", phone_number)
       .single();
 
     if (!user) {
       const { data: newUser, error } = await supabase
         .from("users")
-        .insert({ phone, status: "active" })
+        .insert({ phone_number, status: "active" })
         .select()
         .single();
 
@@ -53,8 +53,8 @@ export async function POST(req: NextRequest) {
 
     // 4. Persist both messages
     await supabase.from("conversations").insert([
-      { user_id: user.id, role: "user", content: body },
-      { user_id: user.id, role: "assistant", content: reply },
+      { user_id: user.id, message_role: "user", message_content: body },
+      { user_id: user.id, message_role: "assistant", message_content: reply },
     ]);
 
     // 5. Send reply via Twilio

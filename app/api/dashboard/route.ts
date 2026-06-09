@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
     await Promise.all([
       supabase
         .from("users")
-        .select("id, phone, name, status, created_at")
+        .select("id, phone_number, full_name, status, created_at")
         .order("created_at", { ascending: false }),
       supabase
         .from("users")

@@ -8,8 +8,8 @@ export const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export type User = {
   id: string;
-  phone: string;
-  name: string | null;
+  phone_number: string;
+  full_name: string | null;
   status: string;
   created_at: string;
 };
@@ -17,7 +17,7 @@ export type User = {
 export type Message = {
   id: string;
   user_id: string;
-  role: "user" | "assistant";
-  content: string;
+  message_role: "user" | "assistant";
+  message_content: string;
   created_at: string;
 };
