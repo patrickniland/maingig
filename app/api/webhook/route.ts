@@ -2,17 +2,25 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { callClaude } from "@/lib/claude";
 import { sendWhatsAppMessage } from "@/lib/twilio";
-import type { Message } from "@/lib/supabase";
+import type { Message, Language } from "@/lib/supabase";
 
-const XHOSA_TRIGGER = /\b(xhosa|isixhosa)\b/i;
-const ENGLISH_TRIGGER = /\b(english|switch to english|english please)\b/i;
+const LANGUAGE_GREETING =
+  "Molo / Hello! I'm Sisi, your job coach. Which language would you like to chat in?\nReply: English, Xhosa, Zulu or Afrikaans.";
 
-// Detects "my name is X", "I'm X", "I am X", "call me X" — captures first capitalised word after the pattern
+const LANGUAGE_TRIGGERS: Record<Language, RegExp> = {
+  english:   /\b(english|english please|switch to english)\b/i,
+  xhosa:     /\b(xhosa|isixhosa)\b/i,
+  zulu:      /\b(zulu|isizulu|zulu please)\b/i,
+  afrikaans: /\b(afrikaans|afrikaans please)\b/i,
+};
+
+// Detects "my name is X", "I'm X", "I am X", "call me X"
 const NAME_PATTERN = /(?:my name is|i'm|i am|call me)\s+([A-Z][a-z]+)/i;
 
-function detectRequestedLanguage(message: string): "xhosa" | "english" | null {
-  if (XHOSA_TRIGGER.test(message)) return "xhosa";
-  if (ENGLISH_TRIGGER.test(message)) return "english";
+function detectRequestedLanguage(message: string): Language | null {
+  for (const [lang, pattern] of Object.entries(LANGUAGE_TRIGGERS) as [Language, RegExp][]) {
+    if (pattern.test(message)) return lang;
+  }
   return null;
 }
 
@@ -45,7 +53,7 @@ export async function POST(req: NextRequest) {
     if (!user) {
       const { data: newUser, error } = await supabase
         .from("users")
-        .insert({ phone_number, status: "seeking", preferred_language: "english" })
+        .insert({ phone_number, status: "seeking", preferred_language: null })
         .select()
         .single();
 
@@ -56,10 +64,10 @@ export async function POST(req: NextRequest) {
       user = newUser;
     }
 
-    // 2. Detect language switch and name from this message
+    // 2. Detect language and name from this message
+    const requestedLanguage = detectRequestedLanguage(body);
     const updates: Record<string, string> = {};
 
-    const requestedLanguage = detectRequestedLanguage(body);
     const languageSwitched =
       requestedLanguage && requestedLanguage !== user.preferred_language
         ? requestedLanguage
@@ -79,7 +87,17 @@ export async function POST(req: NextRequest) {
       user = { ...user, ...updates };
     }
 
-    // 3. Load last 20 messages
+    // 3. If no language chosen yet and none detected in this message → send greeting
+    if (!user.preferred_language) {
+      await supabase.from("conversations").insert([
+        { user_id: user.id, message_role: "user", message_content: body },
+        { user_id: user.id, message_role: "assistant", message_content: LANGUAGE_GREETING },
+      ]);
+      await sendWhatsAppMessage(from, LANGUAGE_GREETING);
+      return new NextResponse("OK", { status: 200 });
+    }
+
+    // 4. Load last 20 messages
     const { data: history } = await supabase
       .from("conversations")
       .select("*")
@@ -89,21 +107,22 @@ export async function POST(req: NextRequest) {
 
     const orderedHistory: Message[] = (history ?? []).reverse();
 
-    // 4. Call Claude with full user context
+    // 5. Call Claude with full user context
     const reply = await callClaude(orderedHistory, body, {
       full_name: user.full_name ?? null,
-      preferred_language: user.preferred_language ?? "english",
+      preferred_language: user.preferred_language as Language,
       isReturning,
-      languageSwitched,
+      isFirstLanguageSelection: !isReturning && !!languageSwitched,
+      languageSwitched: isReturning ? languageSwitched : null,
     });
 
-    // 5. Persist both messages
+    // 6. Persist both messages
     await supabase.from("conversations").insert([
       { user_id: user.id, message_role: "user", message_content: body },
       { user_id: user.id, message_role: "assistant", message_content: reply },
     ]);
 
-    // 6. Send reply via Twilio
+    // 7. Send reply via Twilio
     await sendWhatsAppMessage(from, reply);
 
     return new NextResponse("OK", { status: 200 });

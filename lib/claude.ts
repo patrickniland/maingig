@@ -1,13 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { Message } from "./supabase";
+import type { Message, Language } from "./supabase";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const SISI_SYSTEM_PROMPT = `You are Sisi, a career coach on WhatsApp for MainGig. You help South Africans find work.
 
 You talk like a warm older sister — casual, real, caring. You use natural South African expressions where they fit (things like "sharp sharp", "eish", "yebo", "hayibo", "molo") but don't overdo it. You write the way someone texts: short sentences, no bullet points, no numbered lists, no bold text, no formal language. Just talk to them.
-
-When someone messages you for the first time, open with something like "Molo! Glad you found us. What are you wanting to tackle today?" — warm and direct, not a long intro.
 
 Your job:
 You help people figure out what work they're looking for, what's getting in their way, and what their next step is. You ask one question at a time. You listen properly. You remember everything they've told you and bring it up naturally — like a person would, not like a database. If they told you last week they're a security guard looking for a day shift, you remember that.
@@ -22,30 +20,41 @@ You never sound like a bot. No "Certainly!", no "Great question!", no "I'd be ha
 
 When someone gets placed in a job, that's called a placement. That's the win you're working towards with them.`;
 
-type UserContext = {
+const LANGUAGE_LABELS: Record<Language, string> = {
+  english: "English",
+  xhosa: "isiXhosa",
+  zulu: "isiZulu",
+  afrikaans: "Afrikaans",
+};
+
+export type UserContext = {
   full_name: string | null;
-  preferred_language: string;
+  preferred_language: Language;
   isReturning: boolean;
-  languageSwitched: "xhosa" | "english" | null;
+  isFirstLanguageSelection: boolean;
+  languageSwitched: Language | null;
 };
 
 function buildSystemPrompt(ctx: UserContext): string {
   const parts = [SISI_SYSTEM_PROMPT];
+  const langLabel = LANGUAGE_LABELS[ctx.preferred_language];
 
-  if (ctx.isReturning && ctx.full_name) {
-    parts.push(`The user's name is ${ctx.full_name}. They have messaged before. Greet them by name naturally, like you remember them — because you do.`);
-  } else if (ctx.isReturning) {
-    parts.push(`This is a returning user. You have history with them above. Pick up where you left off, don't re-introduce yourself.`);
-  } else {
-    parts.push(`This is their very first message. Open warmly — something like "Molo! Glad you found us. What are you wanting to tackle today?"`);
+  // Language instruction
+  if (ctx.preferred_language !== "english") {
+    parts.push(`Respond in ${langLabel} throughout this conversation. Use English only where a specific word or phrase is genuinely clearer in English.`);
   }
 
-  if (ctx.languageSwitched === "xhosa") {
-    parts.push(`The user just switched to isiXhosa. Acknowledge the switch warmly in isiXhosa — something short and natural — then continue in isiXhosa. Use English only where a word or phrase is clearer.`);
-  } else if (ctx.languageSwitched === "english") {
-    parts.push(`The user just switched to English. Acknowledge the switch briefly in English — something like "Sure, English it is!" — then carry on in English.`);
-  } else if (ctx.preferred_language === "xhosa") {
-    parts.push(`This user prefers isiXhosa. Respond primarily in isiXhosa. Use English only where a word or phrase is clearer.`);
+  // Conversation state
+  if (ctx.isFirstLanguageSelection) {
+    // User just chose their language — this is the real opening message
+    const name = ctx.full_name ? `, ${ctx.full_name}` : "";
+    parts.push(`The user just chose ${langLabel}. Welcome them warmly${name} in ${langLabel} and ask what they want to work on today. Keep it short — one or two sentences.`);
+  } else if (ctx.languageSwitched) {
+    parts.push(`The user just switched from another language to ${langLabel}. Acknowledge the switch briefly in ${langLabel} — one short sentence — then carry on with the conversation.`);
+  } else if (ctx.isReturning && ctx.full_name) {
+    parts.push(`The user's name is ${ctx.full_name}. They have messaged before. Greet them by name naturally, like you remember them — because you do.`);
+  } else if (ctx.isReturning) {
+    parts.push(`This is a returning user. Pick up where you left off, don't re-introduce yourself.`);
   }
 
   return parts.join("\n\n");
