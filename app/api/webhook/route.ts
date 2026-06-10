@@ -56,11 +56,15 @@ async function saveProfileData(userId: string, data: DataCapture, existingFullNa
   const userUpdates: Record<string, string> = {};
   const profileUpdates: Record<string, unknown> = {};
 
+  // Users table: full_name and location_area
   if (data.full_name?.trim() && !existingFullName) {
     userUpdates.full_name = data.full_name.trim();
   }
+  if (data.location_area?.trim()) {
+    userUpdates.location_area = data.location_area.trim();
+  }
 
-  if (data.location_area?.trim()) profileUpdates.location_area = data.location_area.trim();
+  // user_profiles table: education_level, skills, availability
   if (data.education_level?.trim()) profileUpdates.education_level = data.education_level.trim();
   if (data.availability?.trim()) profileUpdates.availability = data.availability.trim();
   if (data.skills?.length) profileUpdates.skills = data.skills;
@@ -72,7 +76,7 @@ async function saveProfileData(userId: string, data: DataCapture, existingFullNa
     Object.keys(profileUpdates).length > 0
       ? supabase
           .from("user_profiles")
-          .upsert({ user_id: userId, ...profileUpdates, updated_at: new Date().toISOString() }, { onConflict: "user_id" })
+          .upsert({ user_id: userId, ...profileUpdates }, { onConflict: "user_id" })
           .then()
       : null,
   ]);
