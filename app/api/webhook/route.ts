@@ -191,7 +191,7 @@ export async function POST(req: NextRequest) {
           profile_score: null,
         });
 
-        const filename = `${user.id}.pdf`;
+        const filename = `${user.id}-${Date.now()}.pdf`;
 
         // upsert: true overwrites any existing file for this user
         await supabase.storage.from("cvs").upload(filename, pdfBuffer, {
