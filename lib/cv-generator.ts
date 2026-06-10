@@ -106,10 +106,11 @@ async function generateSummary(user: User, profile: UserProfile): Promise<string
   const res = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 250,
+    system: "You output only the requested text. No preamble, no explanations, no markdown, no dashes, no notes. Just the text itself.",
     messages: [
       {
         role: "user",
-        content: `Write ONLY the profile paragraph text. No headers, no dashes, no asterisks, no bold markdown, no notes or suggestions. Just 3-4 clean sentences of professional summary text and nothing else. Third person. Professional tone for the South African job market. No filler phrases like "dynamic" or "passionate".\n\nProfile:\n${ctx}`,
+        content: `Write a 3-4 sentence professional profile summary in third person for a CV. South African job market. No filler phrases.\n\nDetails:\n${ctx}`,
       },
     ],
   });
