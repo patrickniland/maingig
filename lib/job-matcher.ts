@@ -34,6 +34,8 @@ export async function matchJobs(
     .eq("verified", true)
     .limit(300);
 
+  console.log("[matcher] Total jobs loaded:", jobs?.length);
+
   if (error || !jobs?.length) return [];
 
   const skills = (profile.skills ?? []).map((s) => s.toLowerCase());
@@ -45,6 +47,9 @@ export async function matchJobs(
     .toLowerCase()
     .split(/\s+/)
     .filter((w) => w.length > 2);
+
+  console.log("[matcher] Message words:", messageWords);
+  console.log("[matcher] Skills:", skills);
 
   const scored = (jobs as unknown as RawJob[]).map((job) => {
     let score = 0;
@@ -84,6 +89,8 @@ export async function matchJobs(
     return { job, score };
   });
 
+  console.log("[matcher] Top scores:", scored.sort((a, b) => b.score - a.score).slice(0, 5).map((s) => ({ title: s.job.title, score: s.score })));
+
   // Prefer jobs with a skill/experience/message signal; fall back to location-only
   let candidates = scored.filter((s) => s.score > 5);
   if (candidates.length === 0) {
@@ -93,6 +100,8 @@ export async function matchJobs(
   if (candidates.length === 0) {
     candidates = scored.filter((s) => s.job.location_area?.toLowerCase().includes("cape town"));
   }
+
+  console.log("[matcher] Candidates after filter:", candidates.length);
 
   const top3 = candidates.sort((a, b) => b.score - a.score).slice(0, 3);
 
