@@ -7,20 +7,21 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 // ── Page geometry ──────────────────────────────────────────────────────────
 const PW = 595.28;
 const PH = 841.89;
-const MX = 40;           // horizontal margin
-const MT = 44;           // top margin
-const MB = 40;           // bottom margin
-const COL_GAP = 16;
-const LEFT_W = 172;
+const MX = 40;
+const MT = 44;
+
+// 35 / 65 column split
+const LEFT_W = Math.round((PW - MX * 2) * 0.35);   // ~180
+const COL_GAP = 15;
 const RIGHT_X = MX + LEFT_W + COL_GAP;
-const RIGHT_W = PW - RIGHT_X - MX;
+const RIGHT_W = PW - RIGHT_X - MX;                  // ~320
 
 // ── Typography ─────────────────────────────────────────────────────────────
 const S_NAME = 28;
 const S_JOBTITLE = 11;
 const S_SECTION = 8;
 const S_BODY = 9;
-const LH = 1.5;          // body line height multiplier
+const LH = 1.55;
 
 // ── Colors ─────────────────────────────────────────────────────────────────
 const C_DARK = rgb(0.2, 0.2, 0.2);
@@ -31,7 +32,7 @@ const C_RULE = rgb(0.8, 0.8, 0.8);
 // ── Types ──────────────────────────────────────────────────────────────────
 type Font = Awaited<ReturnType<PDFDocument["embedFont"]>>;
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+// ── Text helpers ───────────────────────────────────────────────────────────
 function wrapText(text: string, font: Font, size: number, maxW: number): string[] {
   const words = text.split(/\s+/).filter(Boolean);
   const lines: string[] = [];
@@ -78,14 +79,14 @@ function sectionHead(page: PDFPage, title: string, x: number, y: number, w: numb
   return y;
 }
 
-function colRule(page: PDFPage, x: number, y: number, w: number): number {
+function colDivider(page: PDFPage, x: number, y: number, w: number): number {
   y -= 6;
   rule(page, x, y, w);
   y -= 10;
   return y;
 }
 
-// ── Claude summary ─────────────────────────────────────────────────────────
+// ── Claude profile summary ─────────────────────────────────────────────────
 async function generateSummary(user: User, profile: UserProfile): Promise<string> {
   const ctx = [
     user.full_name && `Name: ${user.full_name}`,
@@ -96,7 +97,7 @@ async function generateSummary(user: User, profile: UserProfile): Promise<string
     profile.availability && `Availability: ${profile.availability}`,
     profile.work_experience?.length &&
       `Experience: ${profile.work_experience
-        .map((w) => [w.role, w.company].filter(Boolean).join(" at "))
+        .map((w) => [w.title, w.company].filter(Boolean).join(" at "))
         .join("; ")}`,
   ]
     .filter(Boolean)
@@ -108,10 +109,11 @@ async function generateSummary(user: User, profile: UserProfile): Promise<string
     messages: [
       {
         role: "user",
-        content: `Write a professional 3–4 sentence CV profile summary for a job seeker. Third person. Professional tone for the South African job market. No filler phrases like "dynamic" or "passionate". Profile:\n\n${ctx}`,
+        content: `Write ONLY the profile paragraph text. No headers, no dashes, no asterisks, no bold markdown, no notes or suggestions. Just 3-4 clean sentences of professional summary text and nothing else. Third person. Professional tone for the South African job market. No filler phrases like "dynamic" or "passionate".\n\nProfile:\n${ctx}`,
       },
     ],
   });
+
   const block = res.content[0];
   return block.type === "text" ? block.text.trim() : "";
 }
@@ -126,22 +128,16 @@ export async function generateCV(user: User, profile: UserProfile): Promise<Buff
 
   const page = pdfDoc.addPage([PW, PH]);
 
-  // ── Header (full width) ──────────────────────────────────────────────────
+  // ── Full-width header ────────────────────────────────────────────────────
   let y = PH - MT;
 
-  // Name
+  // Name — centered, bold, 28pt
   const name = user.full_name ?? "Candidate";
   const nameW = bold.widthOfTextAtSize(name, S_NAME);
-  page.drawText(name, {
-    x: (PW - nameW) / 2,
-    y,
-    size: S_NAME,
-    font: bold,
-    color: C_DARK,
-  });
+  page.drawText(name, { x: (PW - nameW) / 2, y, size: S_NAME, font: bold, color: C_DARK });
   y -= S_NAME * 1.25;
 
-  // Job title
+  // Job title — centered, regular, 11pt
   if (profile.job_title) {
     const titleW = regular.widthOfTextAtSize(profile.job_title, S_JOBTITLE);
     page.drawText(profile.job_title, {
@@ -151,28 +147,26 @@ export async function generateCV(user: User, profile: UserProfile): Promise<Buff
       font: regular,
       color: C_LIGHT,
     });
-    y -= S_JOBTITLE * 1.6;
+    y -= S_JOBTITLE * 1.7;
   }
 
   y -= 8;
   rule(page, MX, y, PW - MX * 2, 0.8);
-  y -= 16;
+  y -= 18;
 
-  // ── Two columns ──────────────────────────────────────────────────────────
-  let lY = y; // left column cursor
-  let rY = y; // right column cursor
+  // ── Two columns start ────────────────────────────────────────────────────
+  let lY = y;
+  let rY = y;
 
   // ── LEFT: CONTACT ────────────────────────────────────────────────────────
   lY = sectionHead(page, "CONTACT", MX, lY, LEFT_W, bold);
-
-  const contactLines = [user.phone_number, user.email, user.location_area].filter(Boolean) as string[];
-  for (const line of contactLines) {
+  for (const line of [user.phone_number, user.email, user.location_area].filter(Boolean) as string[]) {
     lY = textBlock(page, line, MX, lY, regular, S_BODY, LEFT_W);
   }
 
   // ── LEFT: SKILLS ─────────────────────────────────────────────────────────
   if (profile.skills?.length) {
-    lY = colRule(page, MX, lY, LEFT_W);
+    lY = colDivider(page, MX, lY, LEFT_W);
     lY = sectionHead(page, "SKILLS", MX, lY, LEFT_W, bold);
     for (const skill of profile.skills) {
       lY = textBlock(page, skill, MX, lY, regular, S_BODY, LEFT_W);
@@ -180,39 +174,31 @@ export async function generateCV(user: User, profile: UserProfile): Promise<Buff
   }
 
   // ── LEFT: EDUCATION ───────────────────────────────────────────────────────
-  const eduEntries =
-    profile.education?.length
-      ? profile.education
-      : profile.education_level
-      ? [{ qualification: profile.education_level }]
-      : [];
+  const eduEntries = profile.education?.length
+    ? profile.education
+    : profile.education_level
+    ? [{ qualification: profile.education_level }]
+    : [];
 
   if (eduEntries.length) {
-    lY = colRule(page, MX, lY, LEFT_W);
+    lY = colDivider(page, MX, lY, LEFT_W);
     lY = sectionHead(page, "EDUCATION", MX, lY, LEFT_W, bold);
     for (const edu of eduEntries) {
       if (edu.qualification) lY = textBlock(page, edu.qualification, MX, lY, bold, S_BODY, LEFT_W);
-      if (edu.institution) lY = textBlock(page, edu.institution, MX, lY, bold, S_BODY + 1, LEFT_W);
-      if (edu.date_range) lY = textBlock(page, edu.date_range, MX, lY, regular, S_BODY, LEFT_W, C_LIGHT);
-      if (edu.description) lY = textBlock(page, edu.description, MX, lY, regular, S_BODY, LEFT_W);
+      if (edu.institution)   lY = textBlock(page, edu.institution, MX, lY, bold, S_BODY + 1, LEFT_W);
+      if (edu.date_range)    lY = textBlock(page, edu.date_range, MX, lY, regular, S_BODY, LEFT_W, C_LIGHT);
+      if (edu.description)   lY = textBlock(page, edu.description, MX, lY, regular, S_BODY, LEFT_W);
       lY -= 5;
     }
   }
 
   // ── LEFT: LANGUAGES ──────────────────────────────────────────────────────
   if (profile.languages_spoken?.length) {
-    lY = colRule(page, MX, lY, LEFT_W);
+    lY = colDivider(page, MX, lY, LEFT_W);
     lY = sectionHead(page, "LANGUAGES", MX, lY, LEFT_W, bold);
     for (const lang of profile.languages_spoken) {
       lY = textBlock(page, lang, MX, lY, regular, S_BODY, LEFT_W);
     }
-  }
-
-  // ── LEFT: INTERESTS ──────────────────────────────────────────────────────
-  if (profile.interests?.length) {
-    lY = colRule(page, MX, lY, LEFT_W);
-    lY = sectionHead(page, "INTERESTS", MX, lY, LEFT_W, bold);
-    lY = textBlock(page, profile.interests.join("  ·  "), MX, lY, regular, S_BODY, LEFT_W);
   }
 
   // ── RIGHT: PROFILE ────────────────────────────────────────────────────────
@@ -223,39 +209,52 @@ export async function generateCV(user: User, profile: UserProfile): Promise<Buff
 
   // ── RIGHT: WORK EXPERIENCE ────────────────────────────────────────────────
   if (profile.work_experience?.length) {
-    rY = colRule(page, RIGHT_X, rY, RIGHT_W);
+    rY = colDivider(page, RIGHT_X, rY, RIGHT_W);
     rY = sectionHead(page, "WORK EXPERIENCE", RIGHT_X, rY, RIGHT_W, bold);
 
     for (const job of profile.work_experience) {
-      // Job title
-      if (job.role) {
-        rY = textBlock(page, job.role, RIGHT_X, rY, bold, S_BODY, RIGHT_W);
+      // Job title — bold, own line
+      if (job.title) {
+        rY = textBlock(page, job.title, RIGHT_X, rY, bold, S_BODY, RIGHT_W);
       }
-      // Company (left) | duration (right) on same line
-      if (job.company || job.duration) {
+
+      // Company (left) | date range (right) — same line
+      if (job.company || job.start_date) {
+        const dateRange = [job.start_date, job.end_date || "Present"]
+          .filter(Boolean)
+          .join(" – ");
+
         if (job.company) {
           page.drawText(job.company, { x: RIGHT_X, y: rY, size: S_BODY, font: regular, color: C_MID });
         }
-        if (job.duration) {
-          const durW = regular.widthOfTextAtSize(job.duration, S_BODY);
-          page.drawText(job.duration, { x: RIGHT_X + RIGHT_W - durW, y: rY, size: S_BODY, font: regular, color: C_LIGHT });
+        if (dateRange) {
+          const drW = regular.widthOfTextAtSize(dateRange, S_BODY);
+          page.drawText(dateRange, {
+            x: RIGHT_X + RIGHT_W - drW,
+            y: rY,
+            size: S_BODY,
+            font: regular,
+            color: C_LIGHT,
+          });
         }
         rY -= S_BODY * LH;
       }
-      // Responsibilities
+
+      // Responsibilities — bullet points
       if (job.responsibilities?.length) {
         rY -= 2;
         for (const resp of job.responsibilities) {
-          rY = textBlock(page, `•  ${resp}`, RIGHT_X + 10, rY, regular, S_BODY, RIGHT_W - 10);
+          rY = textBlock(page, `•  ${resp}`, RIGHT_X + 8, rY, regular, S_BODY, RIGHT_W - 8);
         }
       }
-      rY -= 8;
+
+      rY -= 10;
     }
   }
 
   // ── RIGHT: AWARDS ─────────────────────────────────────────────────────────
   if (profile.awards?.length) {
-    rY = colRule(page, RIGHT_X, rY, RIGHT_W);
+    rY = colDivider(page, RIGHT_X, rY, RIGHT_W);
     rY = sectionHead(page, "AWARDS", RIGHT_X, rY, RIGHT_W, bold);
     for (const award of profile.awards) {
       rY = textBlock(page, `•  ${award}`, RIGHT_X, rY, regular, S_BODY, RIGHT_W);
@@ -264,7 +263,7 @@ export async function generateCV(user: User, profile: UserProfile): Promise<Buff
 
   // ── RIGHT: REFERENCES ─────────────────────────────────────────────────────
   if (profile.references?.length) {
-    rY = colRule(page, RIGHT_X, rY, RIGHT_W);
+    rY = colDivider(page, RIGHT_X, rY, RIGHT_W);
     rY = sectionHead(page, "REFERENCES", RIGHT_X, rY, RIGHT_W, bold);
     for (const ref of profile.references) {
       if (ref.name) rY = textBlock(page, ref.name, RIGHT_X, rY, bold, S_BODY, RIGHT_W);

@@ -20,9 +20,10 @@ export type User = {
 };
 
 export type WorkExperience = {
-  role?: string;
+  title?: string;
   company?: string;
-  duration?: string;
+  start_date?: string;
+  end_date?: string;
   responsibilities?: string[];
 };
 
