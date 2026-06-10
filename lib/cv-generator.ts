@@ -85,7 +85,7 @@ function rule(page: PDFPage, x: number, y: number, w: number, thickness = 0.5) {
 function sectionHead(page: PDFPage, title: string, x: number, y: number, w: number, boldFont: Font): number {
   page.drawText(title, { x, y, size: S_SECTION, font: boldFont, color: C_MID });
   y -= 11;
-  rule(page, x, y, w);
+  rule(page, x, y, w, 0.7);
   y -= 9;
   return y;
 }
@@ -140,6 +140,15 @@ export async function generateCV(user: User, profile: UserProfile): Promise<Buff
 
   const page = pdfDoc.addPage([PW, PH]);
 
+  // Left column background — drawn first so it sits behind all content
+  page.drawRectangle({
+    x: 0,
+    y: 0,
+    width: MX + LEFT_W + COL_GAP / 2,
+    height: PH,
+    color: rgb(0.94, 0.96, 0.98),
+  });
+
   // ── Full-width header ────────────────────────────────────────────────────
   let y = PH - MT;
 
@@ -176,22 +185,22 @@ export async function generateCV(user: User, profile: UserProfile): Promise<Buff
   page.drawLine({
     start: { x: divX, y: colTopY },
     end:   { x: divX, y: 40 },
-    thickness: 0.5,
+    thickness: 1.5,
     color: C_RULE,
   });
 
   // ── LEFT: CONTACT ────────────────────────────────────────────────────────
-  lY = sectionHead(page, "CONTACT", MX, lY, LEFT_W, bold);
+  lY = sectionHead(page, "CONTACT", MX + 8, lY, LEFT_W - 8, bold);
   for (const line of [user.phone_number, user.email, user.location_area].filter(Boolean) as string[]) {
-    lY = textBlock(page, line, MX, lY, regular, S_BODY, LEFT_W);
+    lY = textBlock(page, line, MX + 8, lY, regular, S_BODY, LEFT_W - 8);
   }
 
   // ── LEFT: SKILLS ─────────────────────────────────────────────────────────
   if (profile.skills?.length) {
     lY = colDivider(page, MX, lY, LEFT_W);
-    lY = sectionHead(page, "SKILLS", MX, lY, LEFT_W, bold);
+    lY = sectionHead(page, "SKILLS", MX + 8, lY, LEFT_W - 8, bold);
     for (const skill of profile.skills) {
-      lY = textBlock(page, skill, MX, lY, regular, S_BODY, LEFT_W);
+      lY = textBlock(page, skill, MX + 8, lY, regular, S_BODY, LEFT_W - 8);
     }
   }
 
@@ -204,12 +213,12 @@ export async function generateCV(user: User, profile: UserProfile): Promise<Buff
 
   if (eduEntries.length) {
     lY = colDivider(page, MX, lY, LEFT_W);
-    lY = sectionHead(page, "EDUCATION", MX, lY, LEFT_W, bold);
+    lY = sectionHead(page, "EDUCATION", MX + 8, lY, LEFT_W - 8, bold);
     for (const edu of eduEntries) {
-      if (edu.qualification) lY = textBlock(page, edu.qualification, MX, lY, bold, S_BODY, LEFT_W);
-      if (edu.institution)   lY = textBlock(page, edu.institution, MX, lY, bold, S_BODY + 1, LEFT_W);
-      if (edu.date_range)    lY = textBlock(page, edu.date_range, MX, lY, regular, S_BODY, LEFT_W, C_LIGHT);
-      if (edu.description)   lY = textBlock(page, edu.description, MX, lY, regular, S_BODY, LEFT_W);
+      if (edu.qualification) lY = textBlock(page, edu.qualification, MX + 8, lY, bold, S_BODY, LEFT_W - 8);
+      if (edu.institution)   lY = textBlock(page, edu.institution, MX + 8, lY, bold, S_BODY + 1, LEFT_W - 8);
+      if (edu.date_range)    lY = textBlock(page, edu.date_range, MX + 8, lY, regular, S_BODY, LEFT_W - 8, C_LIGHT);
+      if (edu.description)   lY = textBlock(page, edu.description, MX + 8, lY, regular, S_BODY, LEFT_W - 8);
       lY -= 5;
     }
   }
@@ -217,9 +226,9 @@ export async function generateCV(user: User, profile: UserProfile): Promise<Buff
   // ── LEFT: LANGUAGES ──────────────────────────────────────────────────────
   if (profile.languages_spoken?.length) {
     lY = colDivider(page, MX, lY, LEFT_W);
-    lY = sectionHead(page, "LANGUAGES", MX, lY, LEFT_W, bold);
+    lY = sectionHead(page, "LANGUAGES", MX + 8, lY, LEFT_W - 8, bold);
     for (const lang of profile.languages_spoken) {
-      lY = textBlock(page, lang, MX, lY, regular, S_BODY, LEFT_W);
+      lY = textBlock(page, lang, MX + 8, lY, regular, S_BODY, LEFT_W - 8);
     }
   }
 
