@@ -247,7 +247,7 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (profile) {
-        jobMatches = await matchJobs(profile, user.location_area ?? null).catch((err) => {
+        jobMatches = await matchJobs(profile, user.location_area ?? null, body).catch((err) => {
           console.error("[job-matcher] Error:", err);
           return [];
         });

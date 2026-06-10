@@ -24,7 +24,8 @@ type RawJob = {
 
 export async function matchJobs(
   profile: UserProfile,
-  locationArea: string | null
+  locationArea: string | null,
+  userMessage?: string
 ): Promise<JobMatch[]> {
   const { data: jobs, error } = await supabase
     .from("jobs")
@@ -40,6 +41,10 @@ export async function matchJobs(
     .map((w) => (w.title ?? "").toLowerCase())
     .filter(Boolean);
   const userLocation = (locationArea ?? "").toLowerCase();
+  const messageWords = (userMessage ?? "")
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 3);
 
   const scored = (jobs as unknown as RawJob[]).map((job) => {
     let score = 0;
@@ -69,13 +74,24 @@ export async function matchJobs(
       else if (descLower.includes(expTitle)) score += 2;
     }
 
+    // Message keyword matches
+    for (const word of messageWords) {
+      if (titleLower.includes(word)) score += 7;
+      if (descLower.includes(word)) score += 3;
+      if (reqsText.includes(word)) score += 3;
+    }
+
     return { job, score };
   });
 
-  // Prefer jobs with a skill/experience signal; fall back to location-only
+  // Prefer jobs with a skill/experience/message signal; fall back to location-only
   let candidates = scored.filter((s) => s.score > 5);
   if (candidates.length === 0) {
     candidates = scored.filter((s) => s.score > 0);
+  }
+  // Always return something — fall back to top 3 by location score alone
+  if (candidates.length === 0) {
+    candidates = scored.filter((s) => s.job.location_area?.toLowerCase().includes("cape town"));
   }
 
   const top3 = candidates.sort((a, b) => b.score - a.score).slice(0, 3);
