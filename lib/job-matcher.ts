@@ -44,7 +44,7 @@ export async function matchJobs(
   const messageWords = (userMessage ?? "")
     .toLowerCase()
     .split(/\s+/)
-    .filter((w) => w.length > 3);
+    .filter((w) => w.length > 2);
 
   const scored = (jobs as unknown as RawJob[]).map((job) => {
     let score = 0;
