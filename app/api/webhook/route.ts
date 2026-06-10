@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { callClaude } from "@/lib/claude";
 import { sendWhatsAppMessage } from "@/lib/twilio";
-import type { Message, Language } from "@/lib/supabase";
+import { generateCV } from "@/lib/cv-generator";
+import type { Message, Language, WorkExperience } from "@/lib/supabase";
 
 const LANGUAGE_GREETING =
   "Molo / Hello! I'm Sisi, your job coach. Which language would you like to chat in?\nReply: English, Xhosa, Zulu or Afrikaans.";
@@ -14,13 +15,9 @@ const LANGUAGE_TRIGGERS: Record<Language, RegExp> = {
   afrikaans: /\b(afrikaans|afrikaans please)\b/i,
 };
 
-const NAME_PATTERN = /(?:my name is|i'm|i am|call me)\s+([A-Z][a-z]+)/i;
+const CV_REQUEST = /\b(cv|curriculum vitae|my cv|generate cv|create cv|send cv|get cv)\b/i;
 
-type WorkExperience = {
-  role?: string;
-  company?: string;
-  duration?: string;
-};
+const NAME_PATTERN = /(?:my name is|i'm|i am|call me)\s+([A-Z][a-z]+)/i;
 
 type DataCapture = {
   full_name?: string;
@@ -152,6 +149,57 @@ export async function POST(req: NextRequest) {
       ]);
       await sendWhatsAppMessage(from, LANGUAGE_GREETING);
       return new NextResponse("OK", { status: 200 });
+    }
+
+    // 4. Handle CV generation request
+    if (CV_REQUEST.test(body)) {
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+
+      try {
+        const pdfBuffer = await generateCV(user, profile ?? {
+          user_id: user.id,
+          education_level: null,
+          skills: null,
+          work_experience: null,
+          availability: null,
+          cv_generated: null,
+          cv_url: null,
+          profile_complete: null,
+          profile_score: null,
+        });
+
+        const filename = `${user.id}.pdf`;
+
+        await supabase.storage.from("cvs").upload(filename, pdfBuffer, {
+          contentType: "application/pdf",
+          upsert: true,
+        });
+
+        const { data: { publicUrl } } = supabase.storage.from("cvs").getPublicUrl(filename);
+
+        await supabase
+          .from("user_profiles")
+          .upsert({ user_id: user.id, cv_url: publicUrl, cv_generated: true }, { onConflict: "user_id" });
+
+        const cvMessage = `Your CV is ready — download it here: ${publicUrl}`;
+
+        await supabase.from("conversations").insert([
+          { user_id: user.id, message_role: "user", message_content: body },
+          { user_id: user.id, message_role: "assistant", message_content: cvMessage },
+        ]);
+
+        await sendWhatsAppMessage(from, cvMessage);
+        return new NextResponse("OK", { status: 200 });
+      } catch (cvErr) {
+        console.error("CV generation error:", cvErr);
+        const errMessage = "Sorry, I had trouble generating your CV just now. Try again in a moment.";
+        await sendWhatsAppMessage(from, errMessage);
+        return new NextResponse("OK", { status: 200 });
+      }
     }
 
     // 4. Load last 20 messages

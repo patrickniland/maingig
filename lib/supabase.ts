@@ -13,9 +13,29 @@ export type User = {
   phone_number: string;
   full_name: string | null;
   email: string | null;
+  location_area: string | null;
   status: string;
   preferred_language: Language | null;
   created_at: string;
+};
+
+export type WorkExperience = {
+  role?: string;
+  company?: string;
+  duration?: string;
+};
+
+export type UserProfile = {
+  id?: string;
+  user_id: string;
+  education_level: string | null;
+  skills: string[] | null;
+  work_experience: WorkExperience[] | null;
+  availability: string | null;
+  cv_generated: boolean | null;
+  cv_url: string | null;
+  profile_complete: boolean | null;
+  profile_score: number | null;
 };
 
 export type Message = {
