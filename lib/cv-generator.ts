@@ -1,8 +1,14 @@
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import Anthropic from "@anthropic-ai/sdk";
-import PDFDocument from "pdfkit";
 import type { User, UserProfile } from "./supabase";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+const PAGE_W = 595.28;
+const PAGE_H = 841.89;
+const MARGIN = 50;
+const CONTENT_W = PAGE_W - MARGIN * 2;
+const LINE_GAP = 1.4;
 
 async function generateSummary(user: User, profile: UserProfile): Promise<string> {
   const context = [
@@ -34,84 +40,124 @@ async function generateSummary(user: User, profile: UserProfile): Promise<string
   return block.type === "text" ? block.text.trim() : "";
 }
 
-function drawSection(doc: PDFKit.PDFDocument, title: string) {
-  doc
-    .moveDown(0.6)
-    .fontSize(11)
-    .font("Helvetica-Bold")
-    .text(title.toUpperCase(), { continued: false })
-    .moveDown(0.1);
-  const y = doc.y;
-  doc.moveTo(doc.page.margins.left, y).lineTo(doc.page.width - doc.page.margins.right, y).strokeColor("#cccccc").lineWidth(0.5).stroke();
-  doc.moveDown(0.3).font("Helvetica").fontSize(10);
+function wrapLines(
+  text: string,
+  font: Awaited<ReturnType<PDFDocument["embedFont"]>>,
+  size: number,
+  maxWidth: number
+): string[] {
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (font.widthOfTextAtSize(candidate, size) > maxWidth && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
 }
 
-export async function generateCV(user: User & { location_area?: string | null }, profile: UserProfile): Promise<Buffer> {
+export async function generateCV(user: User, profile: UserProfile): Promise<Buffer> {
   const summary = await generateSummary(user, profile);
 
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 50, size: "A4" });
-    const chunks: Buffer[] = [];
+  const pdfDoc = await PDFDocument.create();
+  const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    doc.on("data", (chunk) => chunks.push(chunk));
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
-    doc.on("error", reject);
+  let page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+  let y = PAGE_H - MARGIN;
 
-    // ── Header ────────────────────────────────────────────────
-    doc
-      .fontSize(22)
-      .font("Helvetica-Bold")
-      .text(user.full_name ?? "Candidate", { align: "center" });
-
-    const contactParts = [
-      user.phone_number,
-      user.email,
-      user.location_area,
-    ].filter(Boolean);
-
-    doc
-      .moveDown(0.3)
-      .fontSize(9)
-      .font("Helvetica")
-      .fillColor("#555555")
-      .text(contactParts.join("  |  "), { align: "center" })
-      .fillColor("#000000");
-
-    // ── Professional Summary ──────────────────────────────────
-    if (summary) {
-      drawSection(doc, "Professional Summary");
-      doc.text(summary, { align: "justify" });
+  function ensureSpace(needed: number) {
+    if (y - needed < MARGIN) {
+      page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+      y = PAGE_H - MARGIN;
     }
+  }
 
-    // ── Work Experience ───────────────────────────────────────
-    if (profile.work_experience?.length) {
-      drawSection(doc, "Work Experience");
-      for (const job of profile.work_experience) {
-        doc.font("Helvetica-Bold").text(job.role ?? "Role not specified", { continued: !!job.company });
-        if (job.company) doc.font("Helvetica").text(`  —  ${job.company}`, { continued: !!job.duration });
-        if (job.duration) doc.font("Helvetica").fillColor("#666666").text(`  (${job.duration})`).fillColor("#000000");
-        doc.moveDown(0.2);
-      }
+  function drawText(
+    text: string,
+    font: typeof regular,
+    size: number,
+    color = rgb(0, 0, 0),
+    align: "left" | "center" = "left"
+  ) {
+    const lines = wrapLines(text, font, size, CONTENT_W);
+    for (const line of lines) {
+      ensureSpace(size * LINE_GAP);
+      const textW = font.widthOfTextAtSize(line, size);
+      const x = align === "center" ? (PAGE_W - textW) / 2 : MARGIN;
+      page.drawText(line, { x, y, size, font, color });
+      y -= size * LINE_GAP;
     }
+  }
 
-    // ── Education ─────────────────────────────────────────────
-    if (profile.education_level) {
-      drawSection(doc, "Education");
-      doc.text(profile.education_level);
+  function drawSection(title: string) {
+    ensureSpace(32);
+    y -= 10;
+    page.drawText(title.toUpperCase(), { x: MARGIN, y, size: 11, font: bold, color: rgb(0, 0, 0) });
+    y -= 14;
+    page.drawLine({
+      start: { x: MARGIN, y },
+      end: { x: PAGE_W - MARGIN, y },
+      thickness: 0.5,
+      color: rgb(0.8, 0.8, 0.8),
+    });
+    y -= 10;
+  }
+
+  // ── Header ────────────────────────────────────────────────
+  drawText(user.full_name ?? "Candidate", bold, 22, rgb(0, 0, 0), "center");
+  y -= 4;
+
+  const contactParts = [user.phone_number, user.email, user.location_area].filter(Boolean) as string[];
+  if (contactParts.length) {
+    drawText(contactParts.join("  |  "), regular, 9, rgb(0.33, 0.33, 0.33), "center");
+  }
+  y -= 6;
+
+  // ── Professional Summary ──────────────────────────────────
+  if (summary) {
+    drawSection("Professional Summary");
+    drawText(summary, regular, 10);
+  }
+
+  // ── Work Experience ───────────────────────────────────────
+  if (profile.work_experience?.length) {
+    drawSection("Work Experience");
+    for (const job of profile.work_experience) {
+      ensureSpace(24);
+      const roleText = job.role ?? "Role not specified";
+      const metaText = [job.company, job.duration].filter(Boolean).join("  ·  ");
+      drawText(roleText, bold, 10);
+      if (metaText) drawText(metaText, regular, 9, rgb(0.4, 0.4, 0.4));
+      y -= 4;
     }
+  }
 
-    // ── Skills ────────────────────────────────────────────────
-    if (profile.skills?.length) {
-      drawSection(doc, "Skills");
-      doc.text(profile.skills.join("  ·  "));
-    }
+  // ── Education ─────────────────────────────────────────────
+  if (profile.education_level) {
+    drawSection("Education");
+    drawText(profile.education_level, regular, 10);
+  }
 
-    // ── Availability ──────────────────────────────────────────
-    if (profile.availability) {
-      drawSection(doc, "Availability");
-      doc.text(profile.availability);
-    }
+  // ── Skills ────────────────────────────────────────────────
+  if (profile.skills?.length) {
+    drawSection("Skills");
+    drawText(profile.skills.join("  ·  "), regular, 10);
+  }
 
-    doc.end();
-  });
+  // ── Availability ──────────────────────────────────────────
+  if (profile.availability) {
+    drawSection("Availability");
+    drawText(profile.availability, regular, 10);
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  return Buffer.from(pdfBytes);
 }
