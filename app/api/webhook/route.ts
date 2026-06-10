@@ -172,12 +172,19 @@ export async function POST(req: NextRequest) {
         .single();
 
       try {
+        // Always generate fresh — never reuse a cached cv_url
         const pdfBuffer = await generateCV(user, profile ?? {
           user_id: user.id,
+          job_title: null,
           education_level: null,
+          education: null,
           skills: null,
           work_experience: null,
           availability: null,
+          awards: null,
+          languages_spoken: null,
+          interests: null,
+          references: null,
           cv_generated: null,
           cv_url: null,
           profile_complete: null,
@@ -186,6 +193,7 @@ export async function POST(req: NextRequest) {
 
         const filename = `${user.id}.pdf`;
 
+        // upsert: true overwrites any existing file for this user
         await supabase.storage.from("cvs").upload(filename, pdfBuffer, {
           contentType: "application/pdf",
           upsert: true,
