@@ -156,8 +156,18 @@ export async function generateCV(user: User, profile: UserProfile): Promise<Buff
   y -= 18;
 
   // ── Two columns start ────────────────────────────────────────────────────
-  let lY = y;
-  let rY = y;
+  const colTopY = y;
+  let lY = colTopY;
+  let rY = colTopY;
+
+  // Vertical divider between columns
+  const divX = MX + LEFT_W + COL_GAP / 2;
+  page.drawLine({
+    start: { x: divX, y: colTopY },
+    end:   { x: divX, y: 40 },
+    thickness: 0.5,
+    color: C_RULE,
+  });
 
   // ── LEFT: CONTACT ────────────────────────────────────────────────────────
   lY = sectionHead(page, "CONTACT", MX, lY, LEFT_W, bold);
