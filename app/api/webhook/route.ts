@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { callClaude } from "@/lib/claude";
 import { sendWhatsAppMessage } from "@/lib/twilio";
 import { generateCV } from "@/lib/cv-generator";
-import type { Message, Language, WorkExperience } from "@/lib/supabase";
+import type { Message, Language, WorkExperience, Education, Referee } from "@/lib/supabase";
 
 const LANGUAGE_GREETING =
   "Molo / Hello! I'm Sisi, your job coach. Which language would you like to chat in?\nReply: English, Xhosa, Zulu or Afrikaans.";
@@ -22,11 +22,17 @@ const NAME_PATTERN = /(?:my name is|i'm|i am|call me)\s+([A-Z][a-z]+)/i;
 type DataCapture = {
   full_name?: string;
   email?: string;
+  job_title?: string;
   location_area?: string;
   skills?: string[];
   education_level?: string;
+  education?: Education[];
   availability?: string;
   work_experience?: WorkExperience[];
+  referee_contacts?: Referee[];
+  awards?: string[];
+  languages?: string[];
+  interests?: string[];
 };
 
 function detectRequestedLanguage(message: string): Language | null {
@@ -68,11 +74,17 @@ async function saveProfileData(userId: string, data: DataCapture, existingFullNa
   if (data.email?.trim()) userUpdates.email = data.email.trim();
   if (data.location_area?.trim()) userUpdates.location_area = data.location_area.trim();
 
-  // user_profiles table: education_level, skills, availability, work_experience
+  // user_profiles table
+  if (data.job_title?.trim()) profileUpdates.job_title = data.job_title.trim();
   if (data.education_level?.trim()) profileUpdates.education_level = data.education_level.trim();
+  if (data.education?.length) profileUpdates.education = data.education;
   if (data.availability?.trim()) profileUpdates.availability = data.availability.trim();
   if (data.skills?.length) profileUpdates.skills = data.skills;
   if (data.work_experience?.length) profileUpdates.work_experience = data.work_experience;
+  if (data.referee_contacts?.length) profileUpdates.references = data.referee_contacts;
+  if (data.awards?.length) profileUpdates.awards = data.awards;
+  if (data.languages?.length) profileUpdates.languages_spoken = data.languages;
+  if (data.interests?.length) profileUpdates.interests = data.interests;
 
   await Promise.all([
     Object.keys(userUpdates).length > 0

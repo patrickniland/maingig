@@ -23,15 +23,35 @@ export type WorkExperience = {
   role?: string;
   company?: string;
   duration?: string;
+  responsibilities?: string[];
+};
+
+export type Education = {
+  qualification?: string;
+  institution?: string;
+  date_range?: string;
+  description?: string;
+};
+
+export type Referee = {
+  name?: string;
+  role?: string;
+  phone?: string;
 };
 
 export type UserProfile = {
   id?: string;
   user_id: string;
+  job_title: string | null;
   education_level: string | null;
+  education: Education[] | null;
   skills: string[] | null;
   work_experience: WorkExperience[] | null;
   availability: string | null;
+  awards: string[] | null;
+  languages_spoken: string[] | null;
+  interests: string[] | null;
+  references: Referee[] | null;
   cv_generated: boolean | null;
   cv_url: string | null;
   profile_complete: boolean | null;
