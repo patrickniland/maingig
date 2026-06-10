@@ -65,21 +65,17 @@ async function saveProfileData(userId: string, data: DataCapture, existingFullNa
   if (data.availability?.trim()) profileUpdates.availability = data.availability.trim();
   if (data.skills?.length) profileUpdates.skills = data.skills;
 
-  const promises: Promise<unknown>[] = [];
-
-  if (Object.keys(userUpdates).length > 0) {
-    promises.push(supabase.from("users").update(userUpdates).eq("id", userId));
-  }
-
-  if (Object.keys(profileUpdates).length > 0) {
-    promises.push(
-      supabase
-        .from("user_profiles")
-        .upsert({ user_id: userId, ...profileUpdates, updated_at: new Date().toISOString() }, { onConflict: "user_id" })
-    );
-  }
-
-  await Promise.all(promises);
+  await Promise.all([
+    Object.keys(userUpdates).length > 0
+      ? supabase.from("users").update(userUpdates).eq("id", userId).then()
+      : null,
+    Object.keys(profileUpdates).length > 0
+      ? supabase
+          .from("user_profiles")
+          .upsert({ user_id: userId, ...profileUpdates, updated_at: new Date().toISOString() }, { onConflict: "user_id" })
+          .then()
+      : null,
+  ]);
 }
 
 export async function POST(req: NextRequest) {

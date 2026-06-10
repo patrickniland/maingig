@@ -1,5 +1,0 @@
-1:"$Sreact.fragment"
-2:I[97367,["/_next/static/chunks/158myu8e_yme3.js"],"OutletBoundary"]
-3:"$Sreact.suspense"
-0:{"rsc":["$","$1","c",{"children":[["$","main",null,{"style":{"display":"flex","flexDirection":"column","alignItems":"center","justifyContent":"center","minHeight":"100vh","fontFamily":"system-ui, sans-serif","background":"#f0fdf4","gap":"1rem"},"children":[["$","h1",null,{"style":{"fontSize":"2.5rem","fontWeight":700,"color":"#166534"},"children":"MainGig"}],["$","p",null,{"style":{"fontSize":"1.125rem","color":"#4b5563"},"children":"AI-powered career coaching over WhatsApp"}],["$","div",null,{"style":{"background":"#fff","borderRadius":"1rem","padding":"2rem 3rem","boxShadow":"0 1px 8px rgba(0,0,0,0.08)","textAlign":"center"},"children":[["$","div",null,{"style":{"fontSize":"3.5rem","fontWeight":800,"color":"#16a34a"},"children":0}],["$","div",null,{"style":{"fontSize":"1rem","color":"#6b7280","marginTop":"0.25rem"},"children":"placements to date"}]]}]]}],null,["$","$L2",null,{"children":["$","$3",null,{"name":"Next.MetadataOutlet","children":"$@4"}]}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"aWSQeb6tdzeLwEs7G7e_v"}
-4:null
