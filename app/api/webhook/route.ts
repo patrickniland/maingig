@@ -21,6 +21,7 @@ const NAME_PATTERN = /(?:my name is|i'm|i am|call me)\s+([A-Z][a-z]+)/i;
 
 type DataCapture = {
   full_name?: string;
+  cv_full_name?: string;
   email?: string;
   job_title?: string;
   location_area?: string;
@@ -67,10 +68,11 @@ async function saveProfileData(userId: string, data: DataCapture, existingFullNa
   const userUpdates: Record<string, string> = {};
   const profileUpdates: Record<string, unknown> = {};
 
-  // Users table: full_name, email, location_area
+  // Users table: full_name, cv_full_name, email, location_area
   if (data.full_name?.trim() && !existingFullName) {
     userUpdates.full_name = data.full_name.trim();
   }
+  if (data.cv_full_name?.trim()) userUpdates.cv_full_name = data.cv_full_name.trim();
   if (data.email?.trim()) userUpdates.email = data.email.trim();
   if (data.location_area?.trim()) userUpdates.location_area = data.location_area.trim();
 

@@ -133,7 +133,7 @@ export async function generateCV(user: User, profile: UserProfile): Promise<Buff
   let y = PH - MT;
 
   // Name — centered, bold, 28pt
-  const name = user.full_name ?? "Candidate";
+  const name = user.cv_full_name ?? user.full_name ?? "Candidate";
   const nameW = bold.widthOfTextAtSize(name, S_NAME);
   page.drawText(name, { x: (PW - nameW) / 2, y, size: S_NAME, font: bold, color: C_DARK });
   y -= S_NAME * 1.25;
@@ -242,9 +242,10 @@ export async function generateCV(user: User, profile: UserProfile): Promise<Buff
       }
 
       // Responsibilities — bullet points
-      if (job.responsibilities?.length) {
+      const bulletPoints = job.duties ?? job.responsibilities ?? [];
+      if (bulletPoints.length) {
         rY -= 2;
-        for (const resp of job.responsibilities) {
+        for (const resp of bulletPoints) {
           rY = textBlock(page, `•  ${resp}`, RIGHT_X + 8, rY, regular, S_BODY, RIGHT_W - 8);
         }
       }

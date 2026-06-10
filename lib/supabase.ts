@@ -12,6 +12,7 @@ export type User = {
   id: string;
   phone_number: string;
   full_name: string | null;
+  cv_full_name: string | null;
   email: string | null;
   location_area: string | null;
   status: string;
@@ -25,6 +26,7 @@ export type WorkExperience = {
   start_date?: string;
   end_date?: string;
   responsibilities?: string[];
+  duties?: string[];
 };
 
 export type Education = {
