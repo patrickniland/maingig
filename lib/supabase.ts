@@ -12,6 +12,7 @@ export type User = {
   id: string;
   phone_number: string;
   full_name: string | null;
+  email: string | null;
   status: string;
   preferred_language: Language | null;
   created_at: string;

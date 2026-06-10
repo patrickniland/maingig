@@ -16,12 +16,20 @@ const LANGUAGE_TRIGGERS: Record<Language, RegExp> = {
 
 const NAME_PATTERN = /(?:my name is|i'm|i am|call me)\s+([A-Z][a-z]+)/i;
 
+type WorkExperience = {
+  role?: string;
+  company?: string;
+  duration?: string;
+};
+
 type DataCapture = {
   full_name?: string;
+  email?: string;
   location_area?: string;
   skills?: string[];
   education_level?: string;
   availability?: string;
+  work_experience?: WorkExperience[];
 };
 
 function detectRequestedLanguage(message: string): Language | null {
@@ -56,18 +64,18 @@ async function saveProfileData(userId: string, data: DataCapture, existingFullNa
   const userUpdates: Record<string, string> = {};
   const profileUpdates: Record<string, unknown> = {};
 
-  // Users table: full_name and location_area
+  // Users table: full_name, email, location_area
   if (data.full_name?.trim() && !existingFullName) {
     userUpdates.full_name = data.full_name.trim();
   }
-  if (data.location_area?.trim()) {
-    userUpdates.location_area = data.location_area.trim();
-  }
+  if (data.email?.trim()) userUpdates.email = data.email.trim();
+  if (data.location_area?.trim()) userUpdates.location_area = data.location_area.trim();
 
-  // user_profiles table: education_level, skills, availability
+  // user_profiles table: education_level, skills, availability, work_experience
   if (data.education_level?.trim()) profileUpdates.education_level = data.education_level.trim();
   if (data.availability?.trim()) profileUpdates.availability = data.availability.trim();
   if (data.skills?.length) profileUpdates.skills = data.skills;
+  if (data.work_experience?.length) profileUpdates.work_experience = data.work_experience;
 
   await Promise.all([
     Object.keys(userUpdates).length > 0
