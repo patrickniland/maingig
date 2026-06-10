@@ -3,6 +3,8 @@ import { supabase } from "@/lib/supabase";
 import { callClaude } from "@/lib/claude";
 import { sendWhatsAppMessage } from "@/lib/twilio";
 import { generateCV } from "@/lib/cv-generator";
+import { matchJobs } from "@/lib/job-matcher";
+import type { JobMatch } from "@/lib/job-matcher";
 import type { Message, Language, WorkExperience, Education, Referee } from "@/lib/supabase";
 
 const LANGUAGE_GREETING =
@@ -16,6 +18,7 @@ const LANGUAGE_TRIGGERS: Record<Language, RegExp> = {
 };
 
 const CV_REQUEST = /\b(cv|curriculum vitae|my cv|generate cv|create cv|send cv|get cv)\b/i;
+const JOB_REQUEST = /\b(job|work|find work|looking for work|any jobs|job matches|what jobs|jobs available|looking for a job)\b/i;
 
 const NAME_PATTERN = /(?:my name is|i'm|i am|call me)\s+([A-Z][a-z]+)/i;
 
@@ -234,36 +237,54 @@ export async function POST(req: NextRequest) {
 
     const orderedHistory: Message[] = (history ?? []).reverse();
 
-    // 5. Call Claude
+    // 5. Check for job matching request and load matches if needed
+    let jobMatches: JobMatch[] = [];
+    if (JOB_REQUEST.test(body)) {
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+
+      if (profile) {
+        jobMatches = await matchJobs(profile, user.location_area ?? null).catch((err) => {
+          console.error("[job-matcher] Error:", err);
+          return [];
+        });
+      }
+    }
+
+    // 6. Call Claude
     const rawReply = await callClaude(orderedHistory, body, {
       full_name: user.full_name ?? null,
       preferred_language: user.preferred_language as Language,
       isReturning,
       isFirstLanguageSelection: !isReturning && !!languageSwitched,
       languageSwitched: isReturning ? languageSwitched : null,
+      jobMatches: jobMatches.length ? jobMatches : undefined,
     });
 
     console.log("[1] Raw Claude reply:", rawReply);
 
-    // 6. Strip data capture block from reply
+    // 7. Strip data capture block from reply
     const { message, data } = parseClaudeReply(rawReply);
 
     console.log("[2] Cleaned message after parseClaudeReply:", message);
 
-    // 7. Save profile data captured in this turn (fire and forget — don't block response)
+    // 8. Save profile data captured in this turn (fire and forget — don't block response)
     if (data) {
       saveProfileData(user.id, data, user.full_name ?? null).catch((err) =>
         console.error("Profile save error:", err)
       );
     }
 
-    // 8. Persist conversation (store clean message, not the raw reply with JSON)
+    // 9. Persist conversation (store clean message, not the raw reply with JSON)
     await supabase.from("conversations").insert([
       { user_id: user.id, message_role: "user", message_content: body },
       { user_id: user.id, message_role: "assistant", message_content: message },
     ]);
 
-    // 9. Send clean message to user
+    // 10. Send clean message to user
     console.log("[3] Sending to WhatsApp:", { to: from, message });
     try {
       const result = await sendWhatsAppMessage(from, message);

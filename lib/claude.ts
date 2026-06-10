@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Message, Language } from "./supabase";
+import type { JobMatch } from "./job-matcher";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -42,6 +43,7 @@ export type UserContext = {
   isReturning: boolean;
   isFirstLanguageSelection: boolean;
   languageSwitched: Language | null;
+  jobMatches?: JobMatch[];
 };
 
 function buildSystemPrompt(ctx: UserContext): string {
@@ -64,6 +66,20 @@ function buildSystemPrompt(ctx: UserContext): string {
     parts.push(`The user's name is ${ctx.full_name}. They have messaged before. Greet them by name naturally, like you remember them — because you do.`);
   } else if (ctx.isReturning) {
     parts.push(`This is a returning user. Pick up where you left off, don't re-introduce yourself.`);
+  }
+
+  // Job matches — injected when the user asked about jobs
+  if (ctx.jobMatches?.length) {
+    const jobLines = ctx.jobMatches.map((j, i) => {
+      const company = j.company ? ` at ${j.company}` : "";
+      const type = j.employment_type ? ` (${j.employment_type})` : "";
+      const reqs = j.requirements.length ? `\n   Requirements: ${j.requirements.join(", ")}` : "";
+      const url = j.application_url ? `\n   Apply: ${j.application_url}` : "";
+      return `${i + 1}. ${j.title}${company} — ${j.location_area}${type}\n   ${j.description}${reqs}${url}`;
+    });
+    parts.push(
+      `The user just asked about job opportunities. Here are the best matches found for them:\n\n${jobLines.join("\n\n")}\n\nIntroduce these jobs conversationally as Sisi would — warm, natural, not a formal list. Mention each job title, where it is, and one thing about it. Keep it WhatsApp-length. Don't read out the apply URL unless they ask.`
+    );
   }
 
   return parts.join("\n\n");
