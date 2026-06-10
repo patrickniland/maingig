@@ -152,24 +152,11 @@ export async function generateCV(user: User, profile: UserProfile): Promise<Buff
   // ── Full-width header ────────────────────────────────────────────────────
   let y = PH - MT;
 
-  // Name — centered, bold, 28pt
+  // Name — centered within right column, bold, 28pt
   const name = user.cv_full_name ?? user.full_name ?? "Candidate";
   const nameW = bold.widthOfTextAtSize(name, S_NAME);
-  page.drawText(name, { x: (PW - nameW) / 2, y, size: S_NAME, font: bold, color: C_DARK });
+  page.drawText(name, { x: RIGHT_X + (RIGHT_W - nameW) / 2, y, size: S_NAME, font: bold, color: C_DARK });
   y -= S_NAME * 1.25;
-
-  // Job title — centered, regular, 11pt
-  if (profile.job_title) {
-    const titleW = regular.widthOfTextAtSize(profile.job_title, S_JOBTITLE);
-    page.drawText(profile.job_title, {
-      x: (PW - titleW) / 2,
-      y,
-      size: S_JOBTITLE,
-      font: regular,
-      color: C_LIGHT,
-    });
-    y -= S_JOBTITLE * 1.7;
-  }
 
   y -= 8;
   rule(page, MX, y, PW - MX * 2, 0.8);
@@ -180,14 +167,7 @@ export async function generateCV(user: User, profile: UserProfile): Promise<Buff
   let lY = colTopY;
   let rY = colTopY;
 
-  // Vertical divider between columns
   const divX = MX + LEFT_W + COL_GAP / 2;
-  page.drawLine({
-    start: { x: divX, y: colTopY },
-    end:   { x: divX, y: 40 },
-    thickness: 1.5,
-    color: C_RULE,
-  });
 
   // ── LEFT: CONTACT ────────────────────────────────────────────────────────
   lY = sectionHead(page, "CONTACT", MX + 8, lY, LEFT_W - 8, bold);
@@ -307,6 +287,14 @@ export async function generateCV(user: User, profile: UserProfile): Promise<Buff
       rY -= 4;
     }
   }
+
+  // Vertical divider — drawn after content so height matches the longer column
+  page.drawLine({
+    start: { x: divX, y: colTopY },
+    end:   { x: divX, y: Math.min(lY, rY) },
+    thickness: 1.5,
+    color: C_RULE,
+  });
 
   const pdfBytes = await pdfDoc.save();
   return Buffer.from(pdfBytes);
