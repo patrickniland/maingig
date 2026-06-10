@@ -83,7 +83,7 @@ export async function callClaude(
   ];
 
   const response = await client.messages.create({
-    model: "claude-sonnet-4-5",
+    model: "claude-sonnet-4-5-20251001",
     max_tokens: 1024,
     system: buildSystemPrompt(userContext),
     messages,
