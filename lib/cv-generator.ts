@@ -32,6 +32,17 @@ const C_RULE = rgb(0.8, 0.8, 0.8);
 // ── Types ──────────────────────────────────────────────────────────────────
 type Font = Awaited<ReturnType<PDFDocument["embedFont"]>>;
 
+// ── Date formatting ────────────────────────────────────────────────────────
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+function formatDate(dateStr: string): string {
+  const match = dateStr.match(/^(\d{4})-(\d{2})$/);
+  if (!match) return dateStr;
+  const month = parseInt(match[2], 10);
+  if (month < 1 || month > 12) return dateStr;
+  return `${MONTHS[month - 1]} ${match[1]}`;
+}
+
 // ── Text helpers ───────────────────────────────────────────────────────────
 function wrapText(text: string, font: Font, size: number, maxW: number): string[] {
   const words = text.split(/\s+/).filter(Boolean);
@@ -231,7 +242,10 @@ export async function generateCV(user: User, profile: UserProfile): Promise<Buff
 
       // Company (left) | date range (right) — same line
       if (job.company || job.start_date) {
-        const dateRange = [job.start_date, job.end_date || "Present"]
+        const dateRange = [
+          job.start_date ? formatDate(job.start_date) : null,
+          job.end_date   ? formatDate(job.end_date)   : "Present",
+        ]
           .filter(Boolean)
           .join(" – ");
 
