@@ -108,7 +108,7 @@ function JobCard({ job }: { job: JobMatch }) {
           href={job.application_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-block text-xs font-semibold bg-green-600 text-white px-4 py-2 rounded-lg"
+          className="inline-block text-xs font-semibold bg-green-800 text-white px-4 py-2 rounded-lg"
         >
           Apply now
         </a>
@@ -160,14 +160,11 @@ export default async function DashboardPage({
   return (
     <div className="min-h-screen bg-gray-50">
       {/* ── Header ── */}
-      <div className="bg-green-600 text-white px-5 pt-10 pb-6">
+      <div className="bg-green-800 text-white px-5 pt-10 pb-6">
         <p className="text-xs font-semibold uppercase tracking-widest text-green-100 mb-1">
           MainGig
         </p>
         <h1 className="text-2xl font-bold leading-tight">{displayName}</h1>
-        {profile?.job_title && (
-          <p className="text-green-100 text-sm mt-1">{profile.job_title}</p>
-        )}
       </div>
 
       {/* ── Body ── */}
@@ -209,6 +206,43 @@ export default async function DashboardPage({
           </Section>
         )}
 
+        {/* Work Experience */}
+        {profile?.work_experience?.length && (
+          <Section title="Work Experience">
+            {profile.work_experience.map((job, i) => {
+              const dateRange = [job.start_date, job.end_date ?? "Present"]
+                .filter(Boolean)
+                .join(" – ");
+              const bullets = job.duties ?? job.responsibilities ?? [];
+              return (
+                <div key={i} className="mb-5 last:mb-0">
+                  {job.title && (
+                    <p className="text-sm font-semibold text-gray-800">{job.title}</p>
+                  )}
+                  <div className="flex justify-between items-baseline gap-2 mt-0.5">
+                    {job.company && (
+                      <p className="text-xs text-gray-500">{job.company}</p>
+                    )}
+                    {dateRange && (
+                      <p className="text-xs text-gray-400 shrink-0">{dateRange}</p>
+                    )}
+                  </div>
+                  {bullets.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {bullets.map((b, j) => (
+                        <li key={j} className="text-xs text-gray-500 flex gap-1.5">
+                          <span className="shrink-0">•</span>
+                          <span>{b}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })}
+          </Section>
+        )}
+
         {/* Languages */}
         {profile?.languages_spoken?.length && (
           <Section title="Languages">
@@ -224,13 +258,13 @@ export default async function DashboardPage({
                 href={profile.cv_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 bg-green-600 text-white font-semibold text-sm rounded-xl py-3 px-5"
+                className="flex items-center justify-center gap-2 bg-green-800 text-white font-semibold text-sm rounded-xl py-3 px-5"
               >
                 <span>⬇</span> Download CV
               </a>
               <a
                 href="https://wa.me/14155238886?text=Please+regenerate+my+CV"
-                className="flex items-center justify-center gap-2 border border-green-600 text-green-600 font-semibold text-sm rounded-xl py-3 px-5"
+                className="flex items-center justify-center gap-2 border border-green-800 text-green-800 font-semibold text-sm rounded-xl py-3 px-5"
               >
                 Regenerate CV
               </a>
@@ -242,7 +276,7 @@ export default async function DashboardPage({
               </p>
               <a
                 href="https://wa.me/14155238886?text=Please+generate+my+CV"
-                className="inline-flex items-center gap-2 bg-green-600 text-white font-semibold text-sm rounded-xl py-3 px-5"
+                className="inline-flex items-center gap-2 bg-green-800 text-white font-semibold text-sm rounded-xl py-3 px-5"
               >
                 Generate my CV
               </a>
@@ -261,7 +295,7 @@ export default async function DashboardPage({
               </p>
               <a
                 href="https://wa.me/14155238886?text=Can+you+find+jobs+for+me"
-                className="inline-flex items-center gap-2 bg-green-600 text-white font-semibold text-sm rounded-xl py-3 px-5"
+                className="inline-flex items-center gap-2 bg-green-800 text-white font-semibold text-sm rounded-xl py-3 px-5"
               >
                 Find jobs
               </a>
@@ -270,6 +304,14 @@ export default async function DashboardPage({
         </Section>
 
       </div>
+
+      {/* Floating chat button */}
+      <a
+        href="https://wa.me/14155238886"
+        className="fixed bottom-4 right-4 bg-green-800 text-white font-semibold text-sm rounded-full py-3 px-5 shadow-lg"
+      >
+        💬 Chat with Sisi
+      </a>
     </div>
   );
 }
