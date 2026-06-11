@@ -22,6 +22,17 @@ const LANGUAGE_TRIGGERS: Record<Language, RegExp> = {
 
 const CV_REQUEST = /\b(cv|curriculum vitae|my cv|generate cv|create cv|send cv|get cv)\b/i;
 
+const DASHBOARD_URL = "https://maingig.vercel.app/dashboard";
+
+async function getDashboardLink(userId: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc("generate_dashboard_token", { user_id: userId });
+  if (error || !data) {
+    console.error("[dashboard-token] Error:", error);
+    return null;
+  }
+  return `${DASHBOARD_URL}?token=${data as string}`;
+}
+
 const NAME_PATTERN = /(?:my name is|i'm|i am|call me)\s+([A-Z][a-z]+)/i;
 
 type DataCapture = {
@@ -213,13 +224,23 @@ export async function POST(req: NextRequest) {
           .upsert({ user_id: user.id, cv_url: publicUrl, cv_generated: true }, { onConflict: "user_id" });
 
         const cvMessage = `Your CV is ready — download it here: ${publicUrl}`;
+        await sendWhatsAppMessage(from, cvMessage);
+
+        // Also send the dashboard link (fire and forget so CV message arrives first)
+        getDashboardLink(user.id).then(async (link) => {
+          if (!link) return;
+          const dashMsg = `Your MainGig dashboard is ready — see your profile, CV and job matches here: ${link}`;
+          await sendWhatsAppMessage(from, dashMsg).catch(() => {});
+          await supabase.from("conversations").insert({
+            user_id: user.id, message_role: "assistant", message_content: dashMsg,
+          }).then();
+        }).catch(() => {});
 
         await supabase.from("conversations").insert([
           { user_id: user.id, message_role: "user", message_content: body },
           { user_id: user.id, message_role: "assistant", message_content: cvMessage },
         ]);
 
-        await sendWhatsAppMessage(from, cvMessage);
         return new NextResponse("OK", { status: 200 });
       } catch (cvErr) {
         console.error("CV generation error:", cvErr);
@@ -239,23 +260,46 @@ export async function POST(req: NextRequest) {
 
     const orderedHistory: Message[] = (history ?? []).reverse();
 
-    // 5. Intent classification — detect job-seeking intent with a fast Haiku call
+    // 5. Intent classification — run job and dashboard intent calls in parallel
     let jobMatches: JobMatch[] = [];
     try {
-      const intentResponse = await anthropic.messages.create({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 10,
-        messages: [{
-          role: "user",
-          content: `Does this message express interest in finding a job, seeing job listings, or getting work? Answer only YES or NO.\n\nMessage: "${body}"\n\nRecent context: "${orderedHistory.slice(-2).map(m => m.message_content).join(" ")}"`
-        }]
-      });
+      const recentContext = orderedHistory.slice(-2).map(m => m.message_content).join(" ");
+
+      const [jobsIntent, dashIntent] = await Promise.all([
+        anthropic.messages.create({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 10,
+          messages: [{ role: "user", content: `Does this message express interest in finding a job, seeing job listings, or getting work? Answer only YES or NO.\n\nMessage: "${body}"\n\nRecent context: "${recentContext}"` }],
+        }),
+        anthropic.messages.create({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 10,
+          messages: [{ role: "user", content: `Does this message ask to see a dashboard, profile page, or personal page? Answer only YES or NO.\n\nMessage: "${body}"` }],
+        }),
+      ]);
 
       const wantsJobs =
-        intentResponse.content[0].type === "text" &&
-        intentResponse.content[0].text.trim().toUpperCase().startsWith("YES");
+        jobsIntent.content[0].type === "text" &&
+        jobsIntent.content[0].text.trim().toUpperCase().startsWith("YES");
 
-      console.log("[intent] wantsJobs:", wantsJobs);
+      const wantsDashboard =
+        dashIntent.content[0].type === "text" &&
+        dashIntent.content[0].text.trim().toUpperCase().startsWith("YES");
+
+      console.log("[intent] wantsJobs:", wantsJobs, "wantsDashboard:", wantsDashboard);
+
+      if (wantsDashboard) {
+        const link = await getDashboardLink(user.id);
+        if (link) {
+          const dashMsg = `Your MainGig dashboard is ready — see your profile, CV and job matches here: ${link}`;
+          await supabase.from("conversations").insert([
+            { user_id: user.id, message_role: "user", message_content: body },
+            { user_id: user.id, message_role: "assistant", message_content: dashMsg },
+          ]);
+          await sendWhatsAppMessage(from, dashMsg);
+          return new NextResponse("OK", { status: 200 });
+        }
+      }
 
       if (wantsJobs) {
         const { data: profile } = await supabase
@@ -269,6 +313,15 @@ export async function POST(req: NextRequest) {
             console.error("[job-matcher] Error:", err);
             return [];
           });
+
+          // Persist matches so the dashboard can display them
+          if (jobMatches.length) {
+            supabase
+              .from("user_profiles")
+              .update({ last_job_matches: jobMatches })
+              .eq("user_id", user.id)
+              .then();
+          }
         }
       }
     } catch (intentErr) {

@@ -18,6 +18,8 @@ export type User = {
   status: string;
   preferred_language: Language | null;
   created_at: string;
+  dashboard_token: string | null;
+  token_expires_at: string | null;
 };
 
 export type WorkExperience = {
@@ -59,6 +61,7 @@ export type UserProfile = {
   cv_url: string | null;
   profile_complete: boolean | null;
   profile_score: number | null;
+  last_job_matches: Record<string, unknown>[] | null;
 };
 
 export type Message = {
