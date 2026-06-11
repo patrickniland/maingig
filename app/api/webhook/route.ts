@@ -24,6 +24,51 @@ const CV_REQUEST = /\b(cv|curriculum vitae|my cv|generate cv|create cv|send cv|g
 
 const DASHBOARD_URL = "https://maingig.vercel.app/dashboard";
 
+function levelFromPoints(pts: number): number {
+  if (pts >= 500) return 5;
+  if (pts >= 300) return 4;
+  if (pts >= 150) return 3;
+  if (pts >= 50)  return 2;
+  return 1;
+}
+
+async function updatePointsAndStreaks(userId: string, pointsToAdd: number) {
+  const today = new Date().toISOString().split("T")[0];
+
+  const { data: existing } = await supabase
+    .from("points_and_streaks")
+    .select("total_points, current_streak_days, last_activity_date")
+    .eq("user_id", userId)
+    .single();
+
+  const totalPoints = (existing?.total_points ?? 0) + pointsToAdd;
+  let streak = existing?.current_streak_days ?? 0;
+  const lastDate = existing?.last_activity_date;
+
+  if (lastDate) {
+    const diffDays = Math.floor(
+      (new Date(today).getTime() - new Date(lastDate).getTime()) / 86_400_000
+    );
+    if (diffDays === 0) {
+      // same day — streak unchanged
+    } else if (diffDays === 1) {
+      streak += 1;
+    } else {
+      streak = 1;
+    }
+  } else {
+    streak = 1;
+  }
+
+  await supabase
+    .from("points_and_streaks")
+    .upsert(
+      { user_id: userId, total_points: totalPoints, current_streak_days: streak, last_activity_date: today, level: levelFromPoints(totalPoints) },
+      { onConflict: "user_id" }
+    )
+    .then();
+}
+
 async function getDashboardLink(userId: string): Promise<string | null> {
   const { data, error } = await supabase.rpc("generate_dashboard_token", { user_id: userId });
   if (error || !data) {
@@ -223,6 +268,7 @@ export async function POST(req: NextRequest) {
           cv_url: null,
           profile_complete: null,
           profile_score: null,
+          last_job_matches: null,
         });
 
         const filename = `${user.id}-${Date.now()}.pdf`;
@@ -242,10 +288,10 @@ export async function POST(req: NextRequest) {
         const cvMessage = `Your CV is ready — download it here: ${publicUrl}`;
         await sendWhatsAppMessage(from, cvMessage);
 
-        // Also send the dashboard link (fire and forget so CV message arrives first)
+        // Send dashboard link (fire and forget — CV message arrives first)
         getDashboardLink(user.id).then(async (link) => {
           if (!link) return;
-          const dashMsg = `Your MainGig dashboard is ready — see your profile, CV and job matches here: ${link}`;
+          const dashMsg = `Your MainGig profile is ready — view your CV and job matches here: ${link}`;
           await sendWhatsAppMessage(from, dashMsg).catch(() => {});
           await supabase.from("conversations").insert({
             user_id: user.id, message_role: "assistant", message_content: dashMsg,
@@ -334,8 +380,7 @@ export async function POST(req: NextRequest) {
           if (jobMatches.length) {
             supabase
               .from("user_profiles")
-              .update({ last_job_matches: jobMatches })
-              .eq("user_id", user.id)
+              .upsert({ user_id: user.id, last_job_matches: jobMatches }, { onConflict: "user_id" })
               .then();
           }
         }
@@ -374,7 +419,11 @@ export async function POST(req: NextRequest) {
       { user_id: user.id, message_role: "assistant", message_content: message },
     ]);
 
-    // 10. Send clean message to user
+    // 10. Award points, update streak and last_active (fire and forget)
+    updatePointsAndStreaks(user.id, 5).catch(() => {});
+    supabase.from("users").update({ last_active: new Date().toISOString() }).eq("id", user.id).then();
+
+    // 11. Send clean message to user
     console.log("[3] Sending to WhatsApp:", { to: from, message });
     try {
       const result = await sendWhatsAppMessage(from, message);

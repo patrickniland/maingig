@@ -1,11 +1,13 @@
 import { supabase } from "@/lib/supabase";
-import type { User, UserProfile } from "@/lib/supabase";
+import type { User, UserProfile, PointsAndStreaks } from "@/lib/supabase";
 
 // ── Data fetching ──────────────────────────────────────────────────────────
 
-async function getDashboardData(
-  token: string
-): Promise<{ user: User; profile: UserProfile | null } | null> {
+async function getDashboardData(token: string): Promise<{
+  user: User;
+  profile: UserProfile | null;
+  stats: PointsAndStreaks | null;
+} | null> {
   const { data: user, error } = await supabase
     .from("users")
     .select("*")
@@ -15,13 +17,12 @@ async function getDashboardData(
 
   if (error || !user) return null;
 
-  const { data: profile } = await supabase
-    .from("user_profiles")
-    .select("*")
-    .eq("user_id", user.id)
-    .single();
+  const [{ data: profile }, { data: stats }] = await Promise.all([
+    supabase.from("user_profiles").select("*").eq("user_id", user.id).single(),
+    supabase.from("points_and_streaks").select("*").eq("user_id", user.id).single(),
+  ]);
 
-  return { user, profile: profile ?? null };
+  return { user, profile: profile ?? null, stats: stats ?? null };
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────
@@ -153,7 +154,7 @@ export default async function DashboardPage({
     );
   }
 
-  const { user, profile } = result;
+  const { user, profile, stats } = result;
   const displayName = user.full_name ?? user.phone_number;
   const jobMatches: JobMatch[] = [];
 
@@ -169,6 +170,25 @@ export default async function DashboardPage({
 
       {/* ── Body ── */}
       <div className="px-4 pt-5 pb-10 max-w-lg mx-auto">
+
+        {/* Streak & Points */}
+        {stats && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="text-2xl">🔥</div>
+              <div>
+                <p className="text-lg font-bold text-gray-800 leading-none">
+                  {stats.current_streak_days} day{stats.current_streak_days !== 1 ? "s" : ""}
+                </p>
+                <p className="text-xs text-gray-400 mt-0.5">current streak</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-lg font-bold text-green-800 leading-none">{stats.total_points} pts</p>
+              <p className="text-xs text-gray-400 mt-0.5">Level {stats.level}</p>
+            </div>
+          </div>
+        )}
 
         {/* Profile */}
         <Section title="Profile">

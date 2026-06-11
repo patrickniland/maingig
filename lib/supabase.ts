@@ -20,6 +20,7 @@ export type User = {
   created_at: string;
   dashboard_token: string | null;
   token_expires_at: string | null;
+  last_active: string | null;
 };
 
 export type WorkExperience = {
@@ -62,6 +63,14 @@ export type UserProfile = {
   profile_complete: boolean | null;
   profile_score: number | null;
   last_job_matches: Record<string, unknown>[] | null;
+};
+
+export type PointsAndStreaks = {
+  user_id: string;
+  total_points: number;
+  current_streak_days: number;
+  last_activity_date: string | null;
+  level: number;
 };
 
 export type Message = {
