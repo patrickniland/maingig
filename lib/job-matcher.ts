@@ -78,9 +78,6 @@ export async function matchJobs(
     const searchable = `${titleLower} ${descLower} ${reqsText}`;
 
     let score = 0;
-    let skillHit = false;
-    let experienceHit = false;
-    let educationHit = false;
 
     // Location
     if (userLocation && jobLocation.includes(userLocation)) {
@@ -91,21 +88,21 @@ export async function matchJobs(
 
     // Skills — highest weight, title match especially valuable
     for (const term of skillTerms) {
-      if (titleLower.includes(term)) { score += 8; skillHit = true; }
-      if (descLower.includes(term))  { score += 3; skillHit = true; }
-      if (reqsText.includes(term))   { score += 3; skillHit = true; }
+      if (titleLower.includes(term)) score += 8;
+      if (descLower.includes(term))  score += 3;
+      if (reqsText.includes(term))   score += 3;
     }
 
     // Work experience — job titles + duties/responsibilities
     for (const term of experienceTerms) {
-      if (titleLower.includes(term)) { score += 6; experienceHit = true; }
-      if (descLower.includes(term))  { score += 2; experienceHit = true; }
-      if (reqsText.includes(term))   { score += 2; experienceHit = true; }
+      if (titleLower.includes(term)) score += 6;
+      if (descLower.includes(term))  score += 2;
+      if (reqsText.includes(term))   score += 2;
     }
 
     // Education — lower weight, useful for professional roles
     for (const term of educationTerms) {
-      if (searchable.includes(term)) { score += 2; educationHit = true; }
+      if (searchable.includes(term)) score += 2;
     }
 
     // Message keyword intent
@@ -115,10 +112,9 @@ export async function matchJobs(
       if (reqsText.includes(word))   score += 3;
     }
 
-    // Determine match strength from how many profile dimensions contributed
-    const dimensions = [skillHit, experienceHit, educationHit].filter(Boolean).length;
+    // Determine match strength from total score
     const match_strength: MatchStrength =
-      dimensions >= 3 ? "strong" : dimensions === 2 ? "good" : "possible";
+      score >= 20 ? "strong" : score >= 12 ? "good" : "possible";
 
     return { job, score, match_strength };
   });
