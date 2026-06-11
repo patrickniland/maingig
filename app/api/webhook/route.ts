@@ -324,6 +324,7 @@ export async function POST(req: NextRequest) {
 
     // 5. Intent classification — run job and dashboard intent calls in parallel
     let jobMatches: JobMatch[] = [];
+    let dashboardLink: string | undefined;
     try {
       const recentContext = orderedHistory.slice(-2).map(m => m.message_content).join(" ");
 
@@ -352,15 +353,7 @@ export async function POST(req: NextRequest) {
 
       if (wantsDashboard) {
         const link = await getDashboardLink(user.id);
-        if (link) {
-          const dashMsg = `Your MainGig dashboard is ready — see your profile, CV and job matches here: ${link}`;
-          await supabase.from("conversations").insert([
-            { user_id: user.id, message_role: "user", message_content: body },
-            { user_id: user.id, message_role: "assistant", message_content: dashMsg },
-          ]);
-          await sendWhatsAppMessage(from, dashMsg);
-          return new NextResponse("OK", { status: 200 });
-        }
+        if (link) dashboardLink = link;
       }
 
       if (wantsJobs) {
@@ -376,12 +369,19 @@ export async function POST(req: NextRequest) {
             return [];
           });
 
-          // Persist matches so the dashboard can display them
+          // Persist matches and send dashboard follow-up
           if (jobMatches.length) {
             supabase
               .from("user_profiles")
               .upsert({ user_id: user.id, last_job_matches: jobMatches }, { onConflict: "user_id" })
               .then();
+
+            getDashboardLink(user.id).then((link) => {
+              if (!link) return;
+              setTimeout(() => {
+                sendWhatsAppMessage(from, `See your matches on your dashboard: ${link}`).catch(() => {});
+              }, 3000);
+            }).catch(() => {});
           }
         }
       }
@@ -397,6 +397,7 @@ export async function POST(req: NextRequest) {
       isFirstLanguageSelection: !isReturning && !!languageSwitched,
       languageSwitched: isReturning ? languageSwitched : null,
       jobMatches: jobMatches.length ? jobMatches : undefined,
+      dashboardLink,
     });
 
     console.log("[1] Raw Claude reply:", rawReply);

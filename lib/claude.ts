@@ -51,6 +51,7 @@ export type UserContext = {
   isFirstLanguageSelection: boolean;
   languageSwitched: Language | null;
   jobMatches?: JobMatch[];
+  dashboardLink?: string;
 };
 
 function buildSystemPrompt(ctx: UserContext): string {
@@ -73,6 +74,13 @@ function buildSystemPrompt(ctx: UserContext): string {
     parts.push(`The user's name is ${ctx.full_name}. They have messaged before. Greet them by name naturally, like you remember them — because you do.`);
   } else if (ctx.isReturning) {
     parts.push(`This is a returning user. Pick up where you left off, don't re-introduce yourself.`);
+  }
+
+  // Dashboard link — injected when the user asked for their profile page
+  if (ctx.dashboardLink) {
+    parts.push(
+      `The user asked for their dashboard or profile link. Include this link naturally in your response — just give it to them directly, like "here's your link: ${ctx.dashboardLink}". Keep it conversational, no fanfare.`
+    );
   }
 
   // Job matches — injected when the user asked about jobs
