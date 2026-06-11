@@ -169,160 +169,168 @@ export default async function DashboardPage({
       </div>
 
       {/* ── Body ── */}
-      <div className="px-4 pt-5 pb-10 max-w-lg mx-auto">
+      <div className="px-4 pt-5 pb-10 max-w-4xl mx-auto">
+        <div className="md:grid md:grid-cols-2 md:gap-6">
 
-        {/* Streak & Points */}
-        {stats && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="text-2xl">🔥</div>
-              <div>
-                <p className="text-lg font-bold text-gray-800 leading-none">
-                  {stats.current_streak_days} day{stats.current_streak_days !== 1 ? "s" : ""}
-                </p>
-                <p className="text-xs text-gray-400 mt-0.5">current streak</p>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="text-lg font-bold text-green-800 leading-none">{stats.total_points} pts</p>
-              <p className="text-xs text-gray-400 mt-0.5">Level {stats.level}</p>
-            </div>
-          </div>
-        )}
+          {/* Left column */}
+          <div>
+            {/* Profile */}
+            <Section title="Profile">
+              <InfoRow label="Phone"    value={user.phone_number} />
+              <InfoRow label="Email"    value={user.email} />
+              <InfoRow label="Location" value={user.location_area} />
+              <InfoRow label="Available" value={profile?.availability ?? null} />
+            </Section>
 
-        {/* Profile */}
-        <Section title="Profile">
-          <InfoRow label="Phone"    value={user.phone_number} />
-          <InfoRow label="Email"    value={user.email} />
-          <InfoRow label="Location" value={user.location_area} />
-          <InfoRow label="Available" value={profile?.availability ?? null} />
-        </Section>
+            {/* Skills */}
+            <Section title="Skills">
+              <TagList items={profile?.skills ?? []} />
+            </Section>
 
-        {/* Skills */}
-        <Section title="Skills">
-          <TagList items={profile?.skills ?? []} />
-        </Section>
-
-        {/* Education */}
-        {(profile?.education_level || profile?.education?.length) && (
-          <Section title="Education">
-            {profile.education?.length ? (
-              profile.education.map((edu, i) => (
-                <div key={i} className="mb-3 last:mb-0">
-                  {edu.qualification && (
-                    <p className="text-sm font-semibold text-gray-800">{edu.qualification}</p>
-                  )}
-                  {edu.institution && (
-                    <p className="text-xs text-gray-500">{edu.institution}</p>
-                  )}
-                  {edu.date_range && (
-                    <p className="text-xs text-gray-400">{edu.date_range}</p>
-                  )}
-                </div>
-              ))
-            ) : (
-              <p className="text-sm text-gray-700">{profile.education_level}</p>
+            {/* Education */}
+            {(profile?.education_level || profile?.education?.length) && (
+              <Section title="Education">
+                {profile.education?.length ? (
+                  profile.education.map((edu, i) => (
+                    <div key={i} className="mb-3 last:mb-0">
+                      {edu.qualification && (
+                        <p className="text-sm font-semibold text-gray-800">{edu.qualification}</p>
+                      )}
+                      {edu.institution && (
+                        <p className="text-xs text-gray-500">{edu.institution}</p>
+                      )}
+                      {edu.date_range && (
+                        <p className="text-xs text-gray-400">{edu.date_range}</p>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-700">{profile.education_level}</p>
+                )}
+              </Section>
             )}
-          </Section>
-        )}
 
-        {/* Work Experience */}
-        {profile?.work_experience?.length && (
-          <Section title="Work Experience">
-            {profile.work_experience.map((job, i) => {
-              const dateRange = [job.start_date, job.end_date ?? "Present"]
-                .filter(Boolean)
-                .join(" – ");
-              const bullets = job.duties ?? job.responsibilities ?? [];
-              return (
-                <div key={i} className="mb-5 last:mb-0">
-                  {job.title && (
-                    <p className="text-sm font-semibold text-gray-800">{job.title}</p>
-                  )}
-                  <div className="flex justify-between items-baseline gap-2 mt-0.5">
-                    {job.company && (
-                      <p className="text-xs text-gray-500">{job.company}</p>
-                    )}
-                    {dateRange && (
-                      <p className="text-xs text-gray-400 shrink-0">{dateRange}</p>
-                    )}
-                  </div>
-                  {bullets.length > 0 && (
-                    <ul className="mt-2 space-y-1">
-                      {bullets.map((b, j) => (
-                        <li key={j} className="text-xs text-gray-500 flex gap-1.5">
-                          <span className="shrink-0">•</span>
-                          <span>{b}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+            {/* Languages */}
+            {profile?.languages_spoken?.length && (
+              <Section title="Languages">
+                <TagList items={profile.languages_spoken} />
+              </Section>
+            )}
+          </div>
+
+          {/* Right column */}
+          <div>
+            {/* CV */}
+            <Section title="Your CV">
+              {profile?.cv_url ? (
+                <div className="flex flex-col gap-3">
+                  <a
+                    href={profile.cv_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 bg-green-800 text-white font-semibold text-sm rounded-xl py-3 px-5"
+                  >
+                    <span>⬇</span> Download CV
+                  </a>
+                  <a
+                    href="https://wa.me/14155238886?text=Please+regenerate+my+CV"
+                    className="flex items-center justify-center gap-2 border border-green-800 text-green-800 font-semibold text-sm rounded-xl py-3 px-5"
+                  >
+                    Regenerate CV
+                  </a>
                 </div>
-              );
-            })}
-          </Section>
-        )}
+              ) : (
+                <div>
+                  <p className="text-sm text-gray-400 mb-3">
+                    No CV generated yet. Ask Sisi to create one.
+                  </p>
+                  <a
+                    href="https://wa.me/14155238886?text=Please+generate+my+CV"
+                    className="inline-flex items-center gap-2 bg-green-800 text-white font-semibold text-sm rounded-xl py-3 px-5"
+                  >
+                    Generate my CV
+                  </a>
+                </div>
+              )}
+            </Section>
 
-        {/* Languages */}
-        {profile?.languages_spoken?.length && (
-          <Section title="Languages">
-            <TagList items={profile.languages_spoken} />
-          </Section>
-        )}
+            {/* Job Matches */}
+            <Section title="Job Matches">
+              {jobMatches.length > 0 ? (
+                jobMatches.slice(0, 3).map((job, i) => <JobCard key={i} job={job} />)
+              ) : (
+                <div>
+                  <p className="text-sm text-gray-400 mb-3">
+                    No job matches yet. Ask Sisi to find jobs for you.
+                  </p>
+                  <a
+                    href="https://wa.me/14155238886?text=Can+you+find+jobs+for+me"
+                    className="inline-flex items-center gap-2 bg-green-800 text-white font-semibold text-sm rounded-xl py-3 px-5"
+                  >
+                    Find jobs
+                  </a>
+                </div>
+              )}
+            </Section>
 
-        {/* CV */}
-        <Section title="Your CV">
-          {profile?.cv_url ? (
-            <div className="flex flex-col gap-3">
-              <a
-                href={profile.cv_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 bg-green-800 text-white font-semibold text-sm rounded-xl py-3 px-5"
-              >
-                <span>⬇</span> Download CV
-              </a>
-              <a
-                href="https://wa.me/14155238886?text=Please+regenerate+my+CV"
-                className="flex items-center justify-center gap-2 border border-green-800 text-green-800 font-semibold text-sm rounded-xl py-3 px-5"
-              >
-                Regenerate CV
-              </a>
-            </div>
-          ) : (
-            <div>
-              <p className="text-sm text-gray-400 mb-3">
-                No CV generated yet. Ask Sisi to create one.
-              </p>
-              <a
-                href="https://wa.me/14155238886?text=Please+generate+my+CV"
-                className="inline-flex items-center gap-2 bg-green-800 text-white font-semibold text-sm rounded-xl py-3 px-5"
-              >
-                Generate my CV
-              </a>
-            </div>
-          )}
-        </Section>
+            {/* Work Experience */}
+            {profile?.work_experience?.length && (
+              <Section title="Work Experience">
+                {profile.work_experience.map((job, i) => {
+                  const dateRange = [job.start_date, job.end_date ?? "Present"]
+                    .filter(Boolean)
+                    .join(" – ");
+                  const bullets = job.duties ?? job.responsibilities ?? [];
+                  return (
+                    <div key={i} className="mb-5 last:mb-0">
+                      {job.title && (
+                        <p className="text-sm font-semibold text-gray-800">{job.title}</p>
+                      )}
+                      <div className="flex justify-between items-baseline gap-2 mt-0.5">
+                        {job.company && (
+                          <p className="text-xs text-gray-500">{job.company}</p>
+                        )}
+                        {dateRange && (
+                          <p className="text-xs text-gray-400 shrink-0">{dateRange}</p>
+                        )}
+                      </div>
+                      {bullets.length > 0 && (
+                        <ul className="mt-2 space-y-1">
+                          {bullets.map((b, j) => (
+                            <li key={j} className="text-xs text-gray-500 flex gap-1.5">
+                              <span className="shrink-0">•</span>
+                              <span>{b}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })}
+              </Section>
+            )}
 
-        {/* Job matches */}
-        <Section title="Job Matches">
-          {jobMatches.length > 0 ? (
-            jobMatches.slice(0, 3).map((job, i) => <JobCard key={i} job={job} />)
-          ) : (
-            <div>
-              <p className="text-sm text-gray-400 mb-3">
-                No job matches yet. Ask Sisi to find jobs for you.
-              </p>
-              <a
-                href="https://wa.me/14155238886?text=Can+you+find+jobs+for+me"
-                className="inline-flex items-center gap-2 bg-green-800 text-white font-semibold text-sm rounded-xl py-3 px-5"
-              >
-                Find jobs
-              </a>
-            </div>
-          )}
-        </Section>
+            {/* Streak & Points */}
+            {stats && (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="text-2xl">🔥</div>
+                  <div>
+                    <p className="text-lg font-bold text-gray-800 leading-none">
+                      {stats.current_streak_days} day{stats.current_streak_days !== 1 ? "s" : ""}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">current streak</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-lg font-bold text-green-800 leading-none">{stats.total_points} pts</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Level {stats.level}</p>
+                </div>
+              </div>
+            )}
+          </div>
 
+        </div>
       </div>
 
       {/* Floating chat button */}
