@@ -25,21 +25,6 @@ async function getDashboardData(token: string): Promise<{
   return { user, profile: profile ?? null, stats: points ?? null };
 }
 
-// ── Level helpers ──────────────────────────────────────────────────────────
-
-const LEVEL_THRESHOLDS = [0, 50, 150, 300, 500];
-
-function nextLevelThreshold(level: number): number | null {
-  return LEVEL_THRESHOLDS[level] ?? null;
-}
-
-function levelProgress(totalPoints: number, level: number): number {
-  const prev = LEVEL_THRESHOLDS[level - 1] ?? 0;
-  const next = LEVEL_THRESHOLDS[level] ?? null;
-  if (!next) return 100;
-  return Math.min(100, Math.round(((totalPoints - prev) / (next - prev)) * 100));
-}
-
 // ── Sub-components ─────────────────────────────────────────────────────────
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -159,8 +144,6 @@ export default async function DashboardPage({
   const { user, profile, stats } = result;
   const displayName = user.full_name ?? user.phone_number;
   const jobMatches = (profile?.last_job_matches as JobMatch[] | null) ?? [];
-  const progress = stats ? levelProgress(stats.total_points, stats.level) : 0;
-  const nextThreshold = stats ? nextLevelThreshold(stats.level) : null;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -286,36 +269,6 @@ export default async function DashboardPage({
               )}
             </Section>
 
-            {stats && (
-              <Section title="Points & Activity">
-                <div className="flex justify-between items-center mb-4">
-                  <div>
-                    <p className="text-2xl font-bold text-gray-800">{stats.total_points}</p>
-                    <p className="text-xs text-gray-400">total points</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-2xl font-bold text-green-800">{stats.current_streak_days}</p>
-                    <p className="text-xs text-gray-400">day streak 🔥</p>
-                  </div>
-                </div>
-
-                {/* Level progress bar */}
-                <div className="mb-1 flex justify-between items-baseline">
-                  <span className="text-xs font-semibold text-gray-600">Level {stats.level}</span>
-                  {nextThreshold && (
-                    <span className="text-xs text-gray-400">
-                      {nextThreshold - stats.total_points} pts to Level {stats.level + 1}
-                    </span>
-                  )}
-                </div>
-                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-green-800 rounded-full"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-              </Section>
-            )}
           </div>
 
         </div>
