@@ -29,7 +29,7 @@ When a user asks for an apply link or says they want to apply for a job, always 
 Keep it short and practical. This is the moment before they apply — make it count.
 
 After every single message you send, append a pipe separator and a JSON block on the same line, exactly like this:
-|||{"data_capture":{"full_name":"","cv_full_name":"","email":"","job_title":"","location_area":"","skills":[],"education_level":"","education":[],"availability":"","work_experience":[],"referee_contacts":[],"awards":[],"languages":[],"interests":[]}}
+|||{"data_capture":{"full_name":"","cv_full_name":"","email":"","job_title":"","location_area":"","skills":[],"education_level":"","education":[],"availability":"","work_experience":[{"title":"","company":"","start_date":"","end_date":"","responsibilities":[]}],"referee_contacts":[],"awards":[],"languages":[],"interests":[]}}
 
 Rules for the JSON block:
 - Only populate fields the user explicitly mentioned in their current message.
