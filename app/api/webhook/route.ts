@@ -423,14 +423,12 @@ export async function POST(req: NextRequest) {
     } else {
       // 5b. Intent classification
       try {
-        const recentContext = orderedHistory.slice(-2).map(m => m.message_content).join(" ");
-
         const intentResponse = await anthropic.messages.create({
           model: "claude-haiku-4-5-20251001",
           max_tokens: 20,
           messages: [{
             role: "user",
-            content: `Classify this message. Answer with exactly three words, one per intent, each YES or NO:\n1. Does it ask about finding/seeing jobs?\n2. Does it ask to see a dashboard/profile page?\n3. Does it want to post a job or hire someone?\n\nMessage: "${body}"\nRecent context: "${recentContext}"\n\nAnswer format: YES/NO YES/NO YES/NO`,
+            content: `Classify this message with YES or NO for each:\n1. Is the person looking for a JOB to apply for, or asking to see job listings?\n2. Is the person asking to see their personal DASHBOARD, profile page, or CV page?\n3. Is the person wanting to POST a job, HIRE someone, or FIND STAFF for their business?\n\nMessage: "${body}"\n\nAnswer with exactly: YES/NO YES/NO YES/NO\nOnly answer YES if you are certain. When in doubt answer NO.`,
           }],
         });
 
