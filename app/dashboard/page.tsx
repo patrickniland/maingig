@@ -156,7 +156,7 @@ export default async function DashboardPage({
 
   const { user, profile, stats } = result;
   const displayName = user.full_name ?? user.phone_number;
-  const jobMatches: JobMatch[] = [];
+  const jobMatches = (profile?.last_job_matches as JobMatch[] | null) ?? [];
 
   return (
     <div className="min-h-screen bg-gray-50">

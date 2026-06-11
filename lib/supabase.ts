@@ -62,7 +62,7 @@ export type UserProfile = {
   cv_url: string | null;
   profile_complete: boolean | null;
   profile_score: number | null;
-  last_job_matches: Record<string, unknown>[] | null;
+  last_job_matches?: Record<string, unknown>[] | null;
 };
 
 export type PointsAndStreaks = {
