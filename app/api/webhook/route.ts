@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import Anthropic from "@anthropic-ai/sdk";
 import { supabase } from "@/lib/supabase";
 import { callClaude } from "@/lib/claude";
 import { sendWhatsAppMessage } from "@/lib/twilio";
@@ -6,6 +7,8 @@ import { generateCV } from "@/lib/cv-generator";
 import { matchJobs } from "@/lib/job-matcher";
 import type { JobMatch } from "@/lib/job-matcher";
 import type { Message, Language, WorkExperience, Education, Referee } from "@/lib/supabase";
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const LANGUAGE_GREETING =
   "Molo / Hello! I'm Sisi, your job coach. Which language would you like to chat in?\nReply: English, Xhosa, Zulu or Afrikaans.";
@@ -18,7 +21,6 @@ const LANGUAGE_TRIGGERS: Record<Language, RegExp> = {
 };
 
 const CV_REQUEST = /\b(cv|curriculum vitae|my cv|generate cv|create cv|send cv|get cv)\b/i;
-const JOB_REQUEST = /\b(job|work|find work|looking for work|any jobs|job matches|what jobs|jobs available|looking for a job)\b/i;
 
 const NAME_PATTERN = /(?:my name is|i'm|i am|call me)\s+([A-Z][a-z]+)/i;
 
@@ -237,21 +239,40 @@ export async function POST(req: NextRequest) {
 
     const orderedHistory: Message[] = (history ?? []).reverse();
 
-    // 5. Check for job matching request and load matches if needed
+    // 5. Intent classification — detect job-seeking intent with a fast Haiku call
     let jobMatches: JobMatch[] = [];
-    if (JOB_REQUEST.test(body)) {
-      const { data: profile } = await supabase
-        .from("user_profiles")
-        .select("*")
-        .eq("user_id", user.id)
-        .single();
+    try {
+      const intentResponse = await anthropic.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 10,
+        messages: [{
+          role: "user",
+          content: `Does this message express interest in finding a job, seeing job listings, or getting work? Answer only YES or NO.\n\nMessage: "${body}"\n\nRecent context: "${orderedHistory.slice(-2).map(m => m.message_content).join(" ")}"`
+        }]
+      });
 
-      if (profile) {
-        jobMatches = await matchJobs(profile, user.location_area ?? null, body).catch((err) => {
-          console.error("[job-matcher] Error:", err);
-          return [];
-        });
+      const wantsJobs =
+        intentResponse.content[0].type === "text" &&
+        intentResponse.content[0].text.trim().toUpperCase().startsWith("YES");
+
+      console.log("[intent] wantsJobs:", wantsJobs);
+
+      if (wantsJobs) {
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select("*")
+          .eq("user_id", user.id)
+          .single();
+
+        if (profile) {
+          jobMatches = await matchJobs(profile, user.location_area ?? null, body).catch((err) => {
+            console.error("[job-matcher] Error:", err);
+            return [];
+          });
+        }
       }
+    } catch (intentErr) {
+      console.error("[intent] Classification error:", intentErr);
     }
 
     // 6. Call Claude
