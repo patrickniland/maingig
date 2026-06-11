@@ -410,37 +410,25 @@ export async function POST(req: NextRequest) {
     try {
       const recentContext = orderedHistory.slice(-2).map(m => m.message_content).join(" ");
 
-      const [jobsIntent, dashIntent, hireIntent] = await Promise.all([
-        anthropic.messages.create({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 10,
-          messages: [{ role: "user", content: `Does this message express interest in finding a job, seeing job listings, or getting work? Answer only YES or NO.\n\nMessage: "${body}"\n\nRecent context: "${recentContext}"` }],
-        }),
-        anthropic.messages.create({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 10,
-          messages: [{ role: "user", content: `Does this message ask to see a dashboard, profile page, or personal page? Answer only YES or NO.\n\nMessage: "${body}"` }],
-        }),
-        anthropic.messages.create({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 10,
-          messages: [{ role: "user", content: `Does this message indicate that someone wants to hire, post a job, find workers, recruit staff, or is an employer looking for candidates? Answer only YES or NO.\n\nMessage: "${body}"\n\nRecent context: "${recentContext}"` }],
-        }),
-      ]);
+      const intentResponse = await anthropic.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 20,
+        messages: [{
+          role: "user",
+          content: `Classify this message. Answer with exactly three words, one per intent, each YES or NO:\n1. Does it ask about finding/seeing jobs?\n2. Does it ask to see a dashboard/profile page?\n3. Does it want to post a job or hire someone?\n\nMessage: "${body}"\nRecent context: "${recentContext}"\n\nAnswer format: YES/NO YES/NO YES/NO`,
+        }],
+      });
 
-      const wantsJobs =
-        jobsIntent.content[0].type === "text" &&
-        jobsIntent.content[0].text.trim().toUpperCase().startsWith("YES");
+      const intentText = intentResponse.content[0].type === "text"
+        ? intentResponse.content[0].text.trim().toUpperCase()
+        : "";
+      const intentParts = intentText.split(/\s+/);
 
-      const wantsDashboard =
-        dashIntent.content[0].type === "text" &&
-        dashIntent.content[0].text.trim().toUpperCase().startsWith("YES");
+      const wantsJobs = intentParts[0]?.startsWith("YES") ?? false;
+      const wantsDashboard = intentParts[1]?.startsWith("YES") ?? false;
+      const wantsToHire = intentParts[2]?.startsWith("YES") ?? false;
 
-      const wantsToHire =
-        hireIntent.content[0].type === "text" &&
-        hireIntent.content[0].text.trim().toUpperCase().startsWith("YES");
-
-      console.log("[intent] wantsJobs:", wantsJobs, "wantsDashboard:", wantsDashboard, "wantsToHire:", wantsToHire);
+      console.log("[intent] raw:", intentText, "| wantsJobs:", wantsJobs, "wantsDashboard:", wantsDashboard, "wantsToHire:", wantsToHire);
 
       if (wantsDashboard) {
         const link = await getDashboardLink(user.id);
