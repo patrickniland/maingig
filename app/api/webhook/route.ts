@@ -242,6 +242,7 @@ async function saveEmployerListing(phoneNumber: string, employer: EmployerCaptur
       location_area: employer.location_area ?? null,
       active: false,
       verified: false,
+      source: "informal",
     })
     .select("id")
     .single();
