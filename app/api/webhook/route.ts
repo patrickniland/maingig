@@ -399,85 +399,88 @@ export async function POST(req: NextRequest) {
 
     const orderedHistory: Message[] = (history ?? []).reverse();
 
-    // Check if already mid employer onboarding (last assistant message has employer_capture JSON)
+    // 5. Check conversation history to detect active modes before any classification
     const lastAssistantMessage = [...orderedHistory].reverse().find(m => m.message_role === "assistant");
-    const alreadyInEmployerMode = !!lastAssistantMessage?.message_content.includes('"employer_capture"');
+    let isEmployerMode = !!lastAssistantMessage?.message_content.includes('"employer_capture"');
 
-    // 5. Intent classification — run job, dashboard, and hire intent calls in parallel
     let jobMatches: JobMatch[] = [];
     let dashboardLink: string | undefined;
-    let isEmployerMode = alreadyInEmployerMode;
-    try {
-      const recentContext = orderedHistory.slice(-2).map(m => m.message_content).join(" ");
 
-      const intentResponse = await anthropic.messages.create({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 20,
-        messages: [{
-          role: "user",
-          content: `Classify this message. Answer with exactly three words, one per intent, each YES or NO:\n1. Does it ask about finding/seeing jobs?\n2. Does it ask to see a dashboard/profile page?\n3. Does it want to post a job or hire someone?\n\nMessage: "${body}"\nRecent context: "${recentContext}"\n\nAnswer format: YES/NO YES/NO YES/NO`,
-        }],
-      });
+    if (isEmployerMode) {
+      // Already mid employer onboarding — skip intent classification entirely
+      console.log("[intent] Skipping classification — already in employer mode");
+    } else {
+      // 5b. Intent classification
+      try {
+        const recentContext = orderedHistory.slice(-2).map(m => m.message_content).join(" ");
 
-      const intentText = intentResponse.content[0].type === "text"
-        ? intentResponse.content[0].text.trim().toUpperCase()
-        : "";
-      const intentParts = intentText.split(/\s+/);
+        const intentResponse = await anthropic.messages.create({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 20,
+          messages: [{
+            role: "user",
+            content: `Classify this message. Answer with exactly three words, one per intent, each YES or NO:\n1. Does it ask about finding/seeing jobs?\n2. Does it ask to see a dashboard/profile page?\n3. Does it want to post a job or hire someone?\n\nMessage: "${body}"\nRecent context: "${recentContext}"\n\nAnswer format: YES/NO YES/NO YES/NO`,
+          }],
+        });
 
-      const wantsJobs = intentParts[0]?.startsWith("YES") ?? false;
-      const wantsDashboard = intentParts[1]?.startsWith("YES") ?? false;
-      const wantsToHire = intentParts[2]?.startsWith("YES") ?? false;
+        const intentText = intentResponse.content[0].type === "text"
+          ? intentResponse.content[0].text.trim().toUpperCase()
+          : "";
+        const intentParts = intentText.split(/\s+/);
 
-      console.log("[intent] raw:", intentText, "| wantsJobs:", wantsJobs, "wantsDashboard:", wantsDashboard, "wantsToHire:", wantsToHire);
+        const wantsJobs = intentParts[0]?.startsWith("YES") ?? false;
+        const wantsDashboard = intentParts[1]?.startsWith("YES") ?? false;
+        const wantsToHire = intentParts[2]?.startsWith("YES") ?? false;
 
-      if (wantsDashboard) {
-        const link = await getDashboardLink(user.id);
-        if (link) dashboardLink = link;
-      }
+        console.log("[intent] raw:", intentText, "| wantsJobs:", wantsJobs, "wantsDashboard:", wantsDashboard, "wantsToHire:", wantsToHire);
 
-      if (wantsToHire && !alreadyInEmployerMode) {
-        // Check if this phone number is already in the employers table
-        const { data: existingEmployer } = await supabase
-          .from("employers")
-          .select("id")
-          .eq("contact_phone", phone_number)
-          .single();
+        if (wantsDashboard) {
+          const link = await getDashboardLink(user.id);
+          if (link) dashboardLink = link;
+        }
 
-        isEmployerMode = true;
-        console.log("[intent] Employer mode — existing:", !!existingEmployer);
-      }
+        if (wantsToHire) {
+          const { data: existingEmployer } = await supabase
+            .from("employers")
+            .select("id")
+            .eq("contact_phone", phone_number)
+            .single();
 
-      if (wantsJobs && !isEmployerMode) {
-        const { data: profile } = await supabase
-          .from("user_profiles")
-          .select("*")
-          .eq("user_id", user.id)
-          .single();
+          isEmployerMode = true;
+          console.log("[intent] Entering employer mode — existing:", !!existingEmployer);
+        }
 
-        if (profile) {
-          jobMatches = await matchJobs(profile, user.location_area ?? null, body).catch((err) => {
-            console.error("[job-matcher] Error:", err);
-            return [];
-          });
+        if (wantsJobs && !isEmployerMode) {
+          const { data: profile } = await supabase
+            .from("user_profiles")
+            .select("*")
+            .eq("user_id", user.id)
+            .single();
 
-          // Persist matches and send dashboard follow-up
-          if (jobMatches.length) {
-            supabase
-              .from("user_profiles")
-              .upsert({ user_id: user.id, last_job_matches: jobMatches }, { onConflict: "user_id" })
-              .then();
+          if (profile) {
+            jobMatches = await matchJobs(profile, user.location_area ?? null, body).catch((err) => {
+              console.error("[job-matcher] Error:", err);
+              return [];
+            });
 
-            getDashboardLink(user.id).then((link) => {
-              if (!link) return;
-              setTimeout(() => {
-                sendWhatsAppMessage(from, `See your matches on your dashboard: ${link}`).catch(() => {});
-              }, 3000);
-            }).catch(() => {});
+            if (jobMatches.length) {
+              supabase
+                .from("user_profiles")
+                .upsert({ user_id: user.id, last_job_matches: jobMatches }, { onConflict: "user_id" })
+                .then();
+
+              getDashboardLink(user.id).then((link) => {
+                if (!link) return;
+                setTimeout(() => {
+                  sendWhatsAppMessage(from, `See your matches on your dashboard: ${link}`).catch(() => {});
+                }, 3000);
+              }).catch(() => {});
+            }
           }
         }
+      } catch (intentErr) {
+        console.error("[intent] Classification error:", intentErr);
       }
-    } catch (intentErr) {
-      console.error("[intent] Classification error:", intentErr);
     }
 
     // 6. Call Claude
