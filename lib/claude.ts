@@ -75,10 +75,10 @@ function buildSystemPrompt(ctx: UserContext): string {
       const type = j.employment_type ? ` (${j.employment_type})` : "";
       const reqs = j.requirements.length ? `\n   Requirements: ${j.requirements.join(", ")}` : "";
       const url = j.application_url ? `\n   Apply: ${j.application_url}` : "";
-      return `${i + 1}. ${j.title}${company} — ${j.location_area}${type}\n   ${j.description}${reqs}${url}`;
+      return `${i + 1}. ${j.title}${company} — ${j.location_area}${type} [match: ${j.match_strength}]\n   ${j.description}${reqs}${url}`;
     });
     parts.push(
-      `The user just asked about job opportunities. Here are the best matches found for them:\n\n${jobLines.join("\n\n")}\n\nIntroduce these jobs conversationally as Sisi would — warm, natural, not a formal list. Mention each job title, where it is, and one thing about it. Keep it WhatsApp-length. Don't read out the apply URL unless they ask.`
+      `The user just asked about job opportunities. Here are the best matches found for them:\n\n${jobLines.join("\n\n")}\n\nIntroduce these jobs conversationally as Sisi would — warm, natural, not a formal list. Mention each job title, where it is, and one thing about it. For jobs marked [match: strong], say something like "this one looks like a strong match for you". For [match: good], say it looks like a good fit. For [match: possible], keep it casual — "this one could also work". Keep it WhatsApp-length. Don't read out the apply URL unless they ask.`
     );
   }
 
