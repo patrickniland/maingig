@@ -252,6 +252,12 @@ async function saveEmployerListing(phoneNumber: string, employer: EmployerCaptur
     return null;
   }
 
+  // Mark listing as used so employer is no longer in onboarding mode
+  await supabase
+    .from("employers")
+    .update({ free_listing_used: true })
+    .eq("id", employerId);
+
   return job.id;
 }
 
@@ -399,9 +405,14 @@ export async function POST(req: NextRequest) {
 
     const orderedHistory: Message[] = (history ?? []).reverse();
 
-    // 5. Check conversation history to detect active modes before any classification
-    const lastAssistantMessage = [...orderedHistory].reverse().find(m => m.message_role === "assistant");
-    let isEmployerMode = !!lastAssistantMessage?.message_content.includes('"employer_capture"');
+    // 5. Check employers table to detect active onboarding (free_listing_used = false means mid-flow)
+    const { data: existingEmployerCheck } = await supabase
+      .from("employers")
+      .select("id, free_listing_used")
+      .eq("contact_phone", phone_number)
+      .single();
+
+    let isEmployerMode = !!existingEmployerCheck && !existingEmployerCheck.free_listing_used;
 
     let jobMatches: JobMatch[] = [];
     let dashboardLink: string | undefined;
