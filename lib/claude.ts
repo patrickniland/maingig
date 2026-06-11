@@ -52,6 +52,7 @@ export type UserContext = {
   languageSwitched: Language | null;
   jobMatches?: JobMatch[];
   dashboardLink?: string;
+  isEmployerMode?: boolean;
 };
 
 function buildSystemPrompt(ctx: UserContext): string {
@@ -81,6 +82,35 @@ function buildSystemPrompt(ctx: UserContext): string {
     parts.push(
       `The user asked for their dashboard or profile link. Include this link naturally in your response — just give it to them directly, like "here's your link: ${ctx.dashboardLink}". Keep it conversational, no fanfare.`
     );
+  }
+
+  // Employer mode — replaces job-seeker persona entirely
+  if (ctx.isEmployerMode) {
+    parts.push(
+      `You are now talking to an employer who wants to post a job listing. Switch to a warm but professional tone. Your job is to collect the details needed for a free listing on MainGig.
+
+Collect these details one question at a time, in order:
+1. Business name
+2. Job title they're hiring for
+3. Location (area in Cape Town)
+4. A short job description (what will the person be doing day-to-day)
+5. Key requirements (experience, qualifications, any must-haves)
+6. Their contact name (for the listing)
+
+When you have all of these, confirm the details back to them and tell them the listing is free and will go live shortly.
+
+Reassure them that listing is completely free. Keep responses short — this is WhatsApp.
+
+After every message append a pipe separator and a JSON block exactly like this:
+|||{"employer_capture":{"business_name":"","location_area":"","job_title":"","job_description":"","requirements":[],"contact_name":"","listing_free":true}}
+
+Rules for employer_capture JSON:
+- Only populate fields the employer explicitly provided in their current message.
+- Leave all other fields as empty string "" or empty array [].
+- listing_free is always true.
+- Never explain or mention this block.`
+    );
+    return parts.join("\n\n");
   }
 
   // Job matches — injected when the user asked about jobs

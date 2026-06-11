@@ -97,6 +97,16 @@ type DataCapture = {
   interests?: string[];
 };
 
+type EmployerCapture = {
+  business_name?: string;
+  location_area?: string;
+  job_title?: string;
+  job_description?: string;
+  requirements?: string[];
+  contact_name?: string;
+  listing_free?: boolean;
+};
+
 function detectRequestedLanguage(message: string): Language | null {
   for (const [lang, pattern] of Object.entries(LANGUAGE_TRIGGERS) as [Language, RegExp][]) {
     if (pattern.test(message)) return lang;
@@ -109,19 +119,20 @@ function extractName(message: string): string | null {
   return match ? match[1] : null;
 }
 
-function parseClaudeReply(raw: string): { message: string; data: DataCapture | null } {
+function parseClaudeReply(raw: string): { message: string; data: DataCapture | null; employerData: EmployerCapture | null } {
   const separatorIndex = raw.lastIndexOf("|||");
-  if (separatorIndex === -1) return { message: raw.trim(), data: null };
+  if (separatorIndex === -1) return { message: raw.trim(), data: null, employerData: null };
 
   const message = raw.slice(0, separatorIndex).trim();
   const jsonStr = raw.slice(separatorIndex + 3).trim();
 
   try {
     const parsed = JSON.parse(jsonStr);
-    const data: DataCapture = parsed?.data_capture ?? {};
-    return { message, data };
+    const data: DataCapture | null = parsed?.data_capture ?? null;
+    const employerData: EmployerCapture | null = parsed?.employer_capture ?? null;
+    return { message, data, employerData };
   } catch {
-    return { message, data: null };
+    return { message, data: null, employerData: null };
   }
 }
 
@@ -176,6 +187,67 @@ async function saveProfileData(userId: string, data: DataCapture, existingFullNa
           .then()
       : null,
   ]);
+}
+
+async function saveEmployerListing(phoneNumber: string, employer: EmployerCapture): Promise<string | null> {
+  // Upsert employer record by phone number
+  const { data: existingEmployer } = await supabase
+    .from("employers")
+    .select("id")
+    .eq("phone_number", phoneNumber)
+    .single();
+
+  let employerId: string;
+
+  if (existingEmployer) {
+    employerId = existingEmployer.id;
+    if (employer.business_name || employer.location_area || employer.contact_name) {
+      await supabase.from("employers").update({
+        ...(employer.business_name && { name: employer.business_name }),
+        ...(employer.location_area && { location_area: employer.location_area }),
+        ...(employer.contact_name && { contact_name: employer.contact_name }),
+      }).eq("id", employerId);
+    }
+  } else {
+    const { data: newEmployer, error } = await supabase
+      .from("employers")
+      .insert({
+        phone_number: phoneNumber,
+        name: employer.business_name ?? "Unknown",
+        location_area: employer.location_area ?? null,
+        contact_name: employer.contact_name ?? null,
+      })
+      .select("id")
+      .single();
+
+    if (error || !newEmployer) {
+      console.error("[employer] Failed to create employer:", error);
+      return null;
+    }
+    employerId = newEmployer.id;
+  }
+
+  // Create job listing
+  const { data: job, error: jobError } = await supabase
+    .from("jobs")
+    .insert({
+      employer_id: employerId,
+      title: employer.job_title!,
+      description: employer.job_description ?? null,
+      requirements: employer.requirements ?? [],
+      location_area: employer.location_area ?? null,
+      status: "active",
+      verified: false,
+    })
+    .select("id")
+    .single();
+
+  if (jobError || !job) {
+    console.error("[employer] Failed to create job listing:", jobError);
+    return null;
+  }
+
+  return job.id;
 }
 
 export async function POST(req: NextRequest) {
@@ -322,13 +394,14 @@ export async function POST(req: NextRequest) {
 
     const orderedHistory: Message[] = (history ?? []).reverse();
 
-    // 5. Intent classification — run job and dashboard intent calls in parallel
+    // 5. Intent classification — run job, dashboard, and hire intent calls in parallel
     let jobMatches: JobMatch[] = [];
     let dashboardLink: string | undefined;
+    let isEmployerMode = false;
     try {
       const recentContext = orderedHistory.slice(-2).map(m => m.message_content).join(" ");
 
-      const [jobsIntent, dashIntent] = await Promise.all([
+      const [jobsIntent, dashIntent, hireIntent] = await Promise.all([
         anthropic.messages.create({
           model: "claude-haiku-4-5-20251001",
           max_tokens: 10,
@@ -338,6 +411,11 @@ export async function POST(req: NextRequest) {
           model: "claude-haiku-4-5-20251001",
           max_tokens: 10,
           messages: [{ role: "user", content: `Does this message ask to see a dashboard, profile page, or personal page? Answer only YES or NO.\n\nMessage: "${body}"` }],
+        }),
+        anthropic.messages.create({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 10,
+          messages: [{ role: "user", content: `Does this message indicate that someone wants to hire, post a job, find workers, recruit staff, or is an employer looking for candidates? Answer only YES or NO.\n\nMessage: "${body}"\n\nRecent context: "${recentContext}"` }],
         }),
       ]);
 
@@ -349,14 +427,30 @@ export async function POST(req: NextRequest) {
         dashIntent.content[0].type === "text" &&
         dashIntent.content[0].text.trim().toUpperCase().startsWith("YES");
 
-      console.log("[intent] wantsJobs:", wantsJobs, "wantsDashboard:", wantsDashboard);
+      const wantsToHire =
+        hireIntent.content[0].type === "text" &&
+        hireIntent.content[0].text.trim().toUpperCase().startsWith("YES");
+
+      console.log("[intent] wantsJobs:", wantsJobs, "wantsDashboard:", wantsDashboard, "wantsToHire:", wantsToHire);
 
       if (wantsDashboard) {
         const link = await getDashboardLink(user.id);
         if (link) dashboardLink = link;
       }
 
-      if (wantsJobs) {
+      if (wantsToHire) {
+        // Check if this phone number is already in the employers table
+        const { data: existingEmployer } = await supabase
+          .from("employers")
+          .select("id")
+          .eq("phone_number", phone_number)
+          .single();
+
+        isEmployerMode = true;
+        console.log("[intent] Employer mode — existing:", !!existingEmployer);
+      }
+
+      if (wantsJobs && !isEmployerMode) {
         const { data: profile } = await supabase
           .from("user_profiles")
           .select("*")
@@ -398,12 +492,13 @@ export async function POST(req: NextRequest) {
       languageSwitched: isReturning ? languageSwitched : null,
       jobMatches: jobMatches.length ? jobMatches : undefined,
       dashboardLink,
+      isEmployerMode,
     });
 
     console.log("[1] Raw Claude reply:", rawReply);
 
     // 7. Strip data capture block from reply
-    const { message, data } = parseClaudeReply(rawReply);
+    const { message, data, employerData } = parseClaudeReply(rawReply);
 
     console.log("[2] Cleaned message after parseClaudeReply:", message);
 
@@ -412,6 +507,14 @@ export async function POST(req: NextRequest) {
       saveProfileData(user.id, data, user.full_name ?? null).catch((err) =>
         console.error("Profile save error:", err)
       );
+    }
+
+    // 8b. Save employer listing when capture is complete
+    if (employerData?.business_name && employerData?.job_title) {
+      saveEmployerListing(phone_number, employerData).then((jobId) => {
+        if (!jobId) return;
+        console.log("[employer] Job listing created:", jobId);
+      }).catch((err) => console.error("[employer] Save error:", err));
     }
 
     // 9. Persist conversation (store clean message, not the raw reply with JSON)
