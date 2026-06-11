@@ -421,7 +421,7 @@ export async function POST(req: NextRequest) {
     ]);
 
     // 10. Award points, update streak and last_active (fire and forget)
-    updatePointsAndStreaks(user.id, 5).catch(() => {});
+    updatePointsAndStreaks(user.id, 5).catch((err) => console.error("[points] Error:", err));
     supabase.from("users").update({ last_active: new Date().toISOString() }).eq("id", user.id).then();
 
     // 11. Send clean message to user
