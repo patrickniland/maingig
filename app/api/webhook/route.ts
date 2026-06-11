@@ -98,7 +98,23 @@ async function saveProfileData(userId: string, data: DataCapture, existingFullNa
   if (data.education?.length) profileUpdates.education = data.education;
   if (data.availability?.trim()) profileUpdates.availability = data.availability.trim();
   if (data.skills?.length) profileUpdates.skills = data.skills;
-  if (data.work_experience?.length) profileUpdates.work_experience = data.work_experience;
+  if (data.work_experience?.length) {
+    const { data: existing } = await supabase
+      .from("user_profiles")
+      .select("work_experience")
+      .eq("user_id", userId)
+      .single();
+
+    const existingExp: WorkExperience[] = existing?.work_experience ?? [];
+    const merged = [...existingExp];
+    for (const newEntry of data.work_experience) {
+      const exists = merged.some(
+        (e) => e.company?.toLowerCase() === newEntry.company?.toLowerCase()
+      );
+      if (!exists && newEntry.company) merged.push(newEntry);
+    }
+    profileUpdates.work_experience = merged;
+  }
   if (data.referee_contacts?.length) profileUpdates.references = data.referee_contacts;
   if (data.awards?.length) profileUpdates.awards = data.awards;
   if (data.languages?.length) profileUpdates.languages_spoken = data.languages;
