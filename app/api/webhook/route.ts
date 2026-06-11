@@ -240,7 +240,7 @@ async function saveEmployerListing(phoneNumber: string, employer: EmployerCaptur
       description: employer.job_description ?? null,
       requirements: employer.requirements ?? [],
       location_area: employer.location_area ?? null,
-      status: "active",
+      active: false,
       verified: false,
     })
     .select("id")
@@ -398,10 +398,14 @@ export async function POST(req: NextRequest) {
 
     const orderedHistory: Message[] = (history ?? []).reverse();
 
+    // Check if already mid employer onboarding (last assistant message has employer_capture JSON)
+    const lastAssistantMessage = [...orderedHistory].reverse().find(m => m.message_role === "assistant");
+    const alreadyInEmployerMode = !!lastAssistantMessage?.message_content.includes('"employer_capture"');
+
     // 5. Intent classification — run job, dashboard, and hire intent calls in parallel
     let jobMatches: JobMatch[] = [];
     let dashboardLink: string | undefined;
-    let isEmployerMode = false;
+    let isEmployerMode = alreadyInEmployerMode;
     try {
       const recentContext = orderedHistory.slice(-2).map(m => m.message_content).join(" ");
 
@@ -442,7 +446,7 @@ export async function POST(req: NextRequest) {
         if (link) dashboardLink = link;
       }
 
-      if (wantsToHire) {
+      if (wantsToHire && !alreadyInEmployerMode) {
         // Check if this phone number is already in the employers table
         const { data: existingEmployer } = await supabase
           .from("employers")
