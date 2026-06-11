@@ -190,11 +190,11 @@ async function saveProfileData(userId: string, data: DataCapture, existingFullNa
 }
 
 async function saveEmployerListing(phoneNumber: string, employer: EmployerCapture): Promise<string | null> {
-  // Upsert employer record by phone number
+  // Upsert employer record by contact_phone
   const { data: existingEmployer } = await supabase
     .from("employers")
     .select("id")
-    .eq("phone_number", phoneNumber)
+    .eq("contact_phone", phoneNumber)
     .single();
 
   let employerId: string;
@@ -203,7 +203,7 @@ async function saveEmployerListing(phoneNumber: string, employer: EmployerCaptur
     employerId = existingEmployer.id;
     if (employer.business_name || employer.location_area || employer.contact_name) {
       await supabase.from("employers").update({
-        ...(employer.business_name && { name: employer.business_name }),
+        ...(employer.business_name && { business_name: employer.business_name }),
         ...(employer.location_area && { location_area: employer.location_area }),
         ...(employer.contact_name && { contact_name: employer.contact_name }),
       }).eq("id", employerId);
@@ -212,10 +212,14 @@ async function saveEmployerListing(phoneNumber: string, employer: EmployerCaptur
     const { data: newEmployer, error } = await supabase
       .from("employers")
       .insert({
-        phone_number: phoneNumber,
-        name: employer.business_name ?? "Unknown",
+        contact_phone: phoneNumber,
+        business_name: employer.business_name ?? "Unknown",
         location_area: employer.location_area ?? null,
         contact_name: employer.contact_name ?? null,
+        employer_type: "informal",
+        free_listing_used: false,
+        phone_verified: false,
+        suspended: false,
       })
       .select("id")
       .single();
@@ -443,7 +447,7 @@ export async function POST(req: NextRequest) {
         const { data: existingEmployer } = await supabase
           .from("employers")
           .select("id")
-          .eq("phone_number", phone_number)
+          .eq("contact_phone", phone_number)
           .single();
 
         isEmployerMode = true;
