@@ -19,7 +19,6 @@ type RawJob = {
   employment_type: string | null;
   application_url: string | null;
   requirements: string[] | null;
-  employers: { name: string }[] | null;
 };
 
 export async function matchJobs(
@@ -29,7 +28,7 @@ export async function matchJobs(
 ): Promise<JobMatch[]> {
   const { data: jobs, error } = await supabase
     .from("jobs")
-    .select("id, title, description, location_area, employment_type, application_url, requirements, employers(name)")
+    .select("id, title, description, location_area, employment_type, application_url, requirements")
     .eq("active", true)
     .eq("verified", true)
     .limit(300);
@@ -107,7 +106,7 @@ export async function matchJobs(
 
   return top3.map(({ job }) => ({
     title: job.title,
-    company: job.employers?.[0]?.name ?? null,
+    company: null,
     location_area: job.location_area ?? "Cape Town",
     employment_type: job.employment_type ?? null,
     description: (job.description ?? "").slice(0, 150),
