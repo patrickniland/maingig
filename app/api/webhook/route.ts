@@ -202,13 +202,12 @@ async function saveEmployerListing(phoneNumber: string, employer: EmployerCaptur
 
   if (existingEmployer) {
     employerId = existingEmployer.id;
-    if (employer.business_name || employer.location_area || employer.contact_name) {
-      await supabase.from("employers").update({
-        ...(employer.business_name && { business_name: employer.business_name }),
-        ...(employer.location_area && { location_area: employer.location_area }),
-        ...(employer.contact_name && { contact_name: employer.contact_name }),
-      }).eq("id", employerId);
-    }
+    // Always update with captured data, including promoting from "Pending" to real business name
+    await supabase.from("employers").update({
+      ...(employer.business_name && { business_name: employer.business_name }),
+      ...(employer.location_area && { location_area: employer.location_area }),
+      ...(employer.contact_name && { contact_name: employer.contact_name }),
+    }).eq("id", employerId);
   } else {
     const { data: newEmployer, error } = await supabase
       .from("employers")
@@ -456,6 +455,18 @@ export async function POST(req: NextRequest) {
             .select("id")
             .eq("contact_phone", phone_number)
             .single();
+
+          if (!existingEmployer) {
+            await supabase.from("employers").insert({
+              contact_phone: phone_number,
+              business_name: "Pending",
+              employer_type: "informal",
+              phone_verified: false,
+              free_listing_used: false,
+              suspended: false,
+            });
+            console.log("[intent] Created placeholder employer record");
+          }
 
           isEmployerMode = true;
           console.log("[intent] Entering employer mode — existing:", !!existingEmployer);
