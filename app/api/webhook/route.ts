@@ -241,7 +241,7 @@ async function saveEmployerListing(phoneNumber: string, employer: EmployerCaptur
       description: employer.job_description ?? null,
       requirements: employer.requirements ?? [],
       location_area: employer.location_area ?? null,
-      employment_type: employer.employment_type ?? null,
+      employment_type: employer.employment_type || null,
       active: true,
       verified: true,
       source: "informal",
