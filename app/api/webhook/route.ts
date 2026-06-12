@@ -104,6 +104,7 @@ type EmployerCapture = {
   job_description?: string;
   requirements?: string[];
   contact_name?: string;
+  employment_type?: string;
   listing_free?: boolean;
 };
 
@@ -240,8 +241,9 @@ async function saveEmployerListing(phoneNumber: string, employer: EmployerCaptur
       description: employer.job_description ?? null,
       requirements: employer.requirements ?? [],
       location_area: employer.location_area ?? null,
-      active: false,
-      verified: false,
+      employment_type: employer.employment_type ?? null,
+      active: true,
+      verified: true,
       source: "informal",
     })
     .select("id")

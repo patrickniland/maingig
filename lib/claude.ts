@@ -102,7 +102,7 @@ When you have all of these, confirm the details back to them and tell them the l
 Reassure them that listing is completely free. Keep responses short — this is WhatsApp.
 
 After every message append a pipe separator and a JSON block exactly like this:
-|||{"employer_capture":{"business_name":"","location_area":"","job_title":"","job_description":"","requirements":[],"contact_name":"","listing_free":true}}
+|||{"employer_capture":{"business_name":"","location_area":"","job_title":"","job_description":"","requirements":[],"contact_name":"","employment_type":"","listing_free":true}}
 
 Rules for employer_capture JSON:
 - Only populate fields the employer explicitly provided in their current message.
