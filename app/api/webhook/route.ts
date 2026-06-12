@@ -430,7 +430,7 @@ export async function POST(req: NextRequest) {
           max_tokens: 20,
           messages: [{
             role: "user",
-            content: `Classify this message with YES or NO for each:\n1. Looking for a JOB to apply for (e.g. 'find me work', 'any jobs', 'I need a job')\n2. Asking to see their DASHBOARD or profile (e.g. 'show my profile', 'my dashboard', 'see my cv')\n3. Wanting to POST a job or HIRE someone (e.g. 'post a job', 'I want to hire', 'looking for staff', 'I want to post a vacancy')\n\nMessage: "${body}"\n\nAnswer with exactly: YES/NO YES/NO YES/NO\nOnly answer YES if you are certain. When in doubt answer NO.`,
+            content: `Classify this message with YES or NO for each:\n1. Looking for a JOB to apply for (e.g. 'find me work', 'any jobs', 'I need a job')\n2. Asking to see their DASHBOARD or profile (e.g. 'show my profile', 'my dashboard', 'see my cv')\n3. Wanting to POST a job, HIRE someone, or FIND STAFF for their business (e.g. 'I want to hire', 'I want to post a job', 'I need staff', 'I want to find someone', 'I am looking for a worker', 'I want to recruit', 'I have a vacancy', 'I need to fill a position', 'I want to hire someone', 'looking for an employee')\n\nMessage: "${body}"\n\nAnswer with exactly: YES/NO YES/NO YES/NO\nOnly answer YES if you are certain. When in doubt answer NO.`,
           }],
         });
 
