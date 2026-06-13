@@ -429,6 +429,7 @@ export async function POST(req: NextRequest) {
     let isEmployerMode = user.current_mode === "hiring";
     let jobMatches: JobMatch[] = [];
     let dashboardLink: string | undefined;
+    let wantsJobs = false;
 
     // 5b. Intent classification — always run to allow mode switching mid-conversation
     try {
@@ -446,7 +447,7 @@ export async function POST(req: NextRequest) {
         : "";
       const intentParts = intentText.split(/\s+/);
 
-      const wantsJobs = intentParts[0]?.startsWith("YES") ?? false;
+      wantsJobs = intentParts[0]?.startsWith("YES") ?? false;
       const wantsDashboard = intentParts[1]?.startsWith("YES") ?? false;
       const wantsToHire = intentParts[2]?.startsWith("YES") ?? false;
 
@@ -501,6 +502,28 @@ export async function POST(req: NextRequest) {
       }
     } catch (intentErr) {
       console.error("[intent] Classification error:", intentErr);
+    }
+
+    // Auto-trigger job matching if profile is rich enough and no explicit intent
+    if (!wantsJobs && !isEmployerMode && jobMatches.length === 0) {
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("skills, work_experience, education_level, availability")
+        .eq("user_id", user.id)
+        .single();
+
+      const profileRich = (
+        (profile?.skills?.length ?? 0) > 0 ||
+        (profile?.work_experience?.length ?? 0) > 0
+      ) && user.location_area;
+
+      if (profileRich && profile) {
+        jobMatches = await matchJobs(
+          profile as Parameters<typeof matchJobs>[0],
+          user.location_area ?? null,
+          body
+        ).catch(() => []);
+      }
     }
 
     // 6. Call Claude
