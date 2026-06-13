@@ -198,14 +198,18 @@ async function saveEmployerListing(phoneNumber: string, employer: EmployerCaptur
   // Upsert employer record by contact_phone
   const { data: existingEmployer } = await supabase
     .from("employers")
-    .select("id")
+    .select("id, contact_email, contact_phone")
     .eq("contact_phone", phoneNumber)
     .single();
 
   let employerId: string;
+  let contactEmail: string | null = null;
+  let contactPhone: string | null = phoneNumber;
 
   if (existingEmployer) {
     employerId = existingEmployer.id;
+    contactEmail = existingEmployer.contact_email ?? null;
+    contactPhone = existingEmployer.contact_phone ?? phoneNumber;
     // Always update with captured data, including promoting from "Pending" to real business name
     await supabase.from("employers").update({
       ...(employer.business_name && { business_name: employer.business_name }),
@@ -235,6 +239,12 @@ async function saveEmployerListing(phoneNumber: string, employer: EmployerCaptur
     employerId = newEmployer.id;
   }
 
+  const applicationUrl = contactEmail
+    ? `mailto:${contactEmail}`
+    : contactPhone
+    ? `tel:${contactPhone}`
+    : null;
+
   // Create job listing
   const { data: job, error: jobError } = await supabase
     .from("jobs")
@@ -245,6 +255,7 @@ async function saveEmployerListing(phoneNumber: string, employer: EmployerCaptur
       requirements: employer.requirements ?? [],
       location_area: employer.location_area ?? null,
       employment_type: employer.employment_type ? employer.employment_type.toLowerCase().replace(" ", "-") : null,
+      application_url: applicationUrl,
       active: true,
       verified: true,
       source: "informal",
