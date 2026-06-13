@@ -452,14 +452,15 @@ export async function POST(req: NextRequest) {
 
       console.log("[intent] raw:", intentText, "| wantsJobs:", wantsJobs, "wantsDashboard:", wantsDashboard, "wantsToHire:", wantsToHire);
 
-      // Update mode if intent signals a switch
-      if (wantsToHire && user.current_mode !== "hiring") {
+      // Update mode only if already set — mode prompt owns the initial assignment
+      if (wantsToHire && user.current_mode !== null && user.current_mode !== "hiring") {
         supabase.from("users").update({ current_mode: "hiring" }).eq("id", user.id).then();
         user = { ...user, current_mode: "hiring" };
         isEmployerMode = true;
       }
 
-      if (wantsJobs && user.current_mode !== "seeking") {
+      if (wantsJobs && user.current_mode === "hiring") {
+        // Only switch from hiring → seeking, never set from null
         supabase.from("users").update({ current_mode: "seeking" }).eq("id", user.id).then();
         user = { ...user, current_mode: "seeking" };
         isEmployerMode = false;
