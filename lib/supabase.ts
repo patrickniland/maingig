@@ -16,6 +16,7 @@ export type User = {
   email: string | null;
   location_area: string | null;
   status: string;
+  current_mode: "seeking" | "hiring" | null;
   preferred_language: Language | null;
   created_at: string;
   dashboard_token: string | null;

@@ -56,7 +56,7 @@ export type UserContext = {
   languageSwitched: Language | null;
   jobMatches?: JobMatch[];
   dashboardLink?: string;
-  isEmployerMode?: boolean;
+  current_mode: "seeking" | "hiring" | null;
 };
 
 function buildSystemPrompt(ctx: UserContext): string {
@@ -72,7 +72,7 @@ function buildSystemPrompt(ctx: UserContext): string {
   if (ctx.isFirstLanguageSelection) {
     // User just chose their language — this is the real opening message
     const name = ctx.full_name ? `, ${ctx.full_name}` : "";
-    parts.push(`The user just chose ${langLabel}. Welcome them warmly${name} in ${langLabel} and ask what they want to work on today. Keep it short — one or two sentences.`);
+    parts.push(`The user just chose ${langLabel}. Welcome them warmly${name} in ${langLabel} and ask for their name. Just their name — one question only. Keep it short and warm.`);
   } else if (ctx.languageSwitched) {
     parts.push(`The user just switched from another language to ${langLabel}. Acknowledge the switch briefly in ${langLabel} — one short sentence — then carry on with the conversation.`);
   } else if (ctx.isReturning && ctx.full_name) {
@@ -89,7 +89,7 @@ function buildSystemPrompt(ctx: UserContext): string {
   }
 
   // Employer mode — replaces job-seeker persona entirely
-  if (ctx.isEmployerMode) {
+  if (ctx.current_mode === "hiring") {
     parts.push(
       `You are now talking to an employer who wants to post a job listing. Switch to a warm but professional tone. Your job is to collect the details needed for a free listing on MainGig.
 

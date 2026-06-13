@@ -22,6 +22,10 @@ const LANGUAGE_TRIGGERS: Record<Language, RegExp> = {
 
 const CV_REQUEST = /\b(cv|curriculum vitae|my cv|generate cv|create cv|send cv|get cv)\b/i;
 
+const MODE_SEEKING = /\b(find work|looking for work|find me work|need a job|find a job|get a job|seeking work|want work|want a job|find work)\b/i;
+const MODE_HIRING  = /\b(post a job|posting a job|i want to hire|need staff|find staff|find workers|recruit|i have a vacancy|post a vacancy|i want to post)\b/i;
+const MODE_PROMPT  = "Are you looking for work, or are you posting a job?\nReply: Find Work or Post a Job";
+
 const DASHBOARD_URL = "https://maingig.vercel.app/dashboard";
 
 function levelFromPoints(pts: number): number {
@@ -253,12 +257,6 @@ async function saveEmployerListing(phoneNumber: string, employer: EmployerCaptur
     return null;
   }
 
-  // Mark listing as used so employer is no longer in onboarding mode
-  await supabase
-    .from("employers")
-    .update({ free_listing_used: true })
-    .eq("id", employerId);
-
   return job.id;
 }
 
@@ -324,6 +322,27 @@ export async function POST(req: NextRequest) {
       ]);
       await sendWhatsAppMessage(from, LANGUAGE_GREETING);
       return new NextResponse("OK", { status: 200 });
+    }
+
+    // 3b. If language set but mode not yet chosen → detect from message or prompt
+    if (!user.current_mode) {
+      const modeFromMessage = MODE_HIRING.test(body)
+        ? "hiring"
+        : MODE_SEEKING.test(body)
+        ? "seeking"
+        : null;
+
+      if (modeFromMessage) {
+        await supabase.from("users").update({ current_mode: modeFromMessage }).eq("id", user.id);
+        user = { ...user, current_mode: modeFromMessage as "seeking" | "hiring" };
+      } else {
+        await supabase.from("conversations").insert([
+          { user_id: user.id, message_role: "user", message_content: body },
+          { user_id: user.id, message_role: "assistant", message_content: MODE_PROMPT },
+        ]);
+        await sendWhatsAppMessage(from, MODE_PROMPT);
+        return new NextResponse("OK", { status: 200 });
+      }
     }
 
     // 4. Handle CV generation request
@@ -406,103 +425,81 @@ export async function POST(req: NextRequest) {
 
     const orderedHistory: Message[] = (history ?? []).reverse();
 
-    // 5. Check employers table to detect active onboarding (free_listing_used = false means mid-flow)
-    const { data: existingEmployerCheck } = await supabase
-      .from("employers")
-      .select("id, free_listing_used")
-      .eq("contact_phone", phone_number)
-      .single();
-
-    let isEmployerMode = !!existingEmployerCheck && !existingEmployerCheck.free_listing_used;
-
+    // 5. Derive mode from user record; intent classification can update it this turn
+    let isEmployerMode = user.current_mode === "hiring";
     let jobMatches: JobMatch[] = [];
     let dashboardLink: string | undefined;
 
-    if (isEmployerMode) {
-      // Already mid employer onboarding — skip intent classification entirely
-      console.log("[intent] Skipping classification — already in employer mode");
-    } else {
-      // 5b. Intent classification
-      try {
-        const intentResponse = await anthropic.messages.create({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 20,
-          messages: [{
-            role: "user",
-            content: `Classify this message with YES or NO for each:\n1. Looking for a JOB to apply for (e.g. 'find me work', 'any jobs', 'I need a job')\n2. Asking to see their DASHBOARD or profile (e.g. 'show my profile', 'my dashboard', 'see my cv')\n3. Wanting to POST a job, HIRE someone, or FIND STAFF for their business (e.g. 'I want to hire', 'I want to post a job', 'I need staff', 'I want to find someone', 'I am looking for a worker', 'I want to recruit', 'I have a vacancy', 'I need to fill a position', 'I want to hire someone', 'looking for an employee')\n\nMessage: "${body}"\n\nAnswer with exactly: YES/NO YES/NO YES/NO\nOnly answer YES if you are certain. When in doubt answer NO.`,
-          }],
-        });
+    // 5b. Intent classification — always run to allow mode switching mid-conversation
+    try {
+      const intentResponse = await anthropic.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 20,
+        messages: [{
+          role: "user",
+          content: `Classify this message with YES or NO for each:\n1. Looking for a JOB to apply for (e.g. 'find me work', 'any jobs', 'I need a job')\n2. Asking to see their DASHBOARD or profile (e.g. 'show my profile', 'my dashboard', 'see my cv')\n3. Wanting to POST a job, HIRE someone, or FIND STAFF for their business (e.g. 'I want to hire', 'I want to post a job', 'I need staff', 'I want to find someone', 'I am looking for a worker', 'I want to recruit', 'I have a vacancy', 'I need to fill a position', 'I want to hire someone', 'looking for an employee')\n\nMessage: "${body}"\n\nAnswer with exactly: YES/NO YES/NO YES/NO\nOnly answer YES if you are certain. When in doubt answer NO.`,
+        }],
+      });
 
-        const intentText = intentResponse.content[0].type === "text"
-          ? intentResponse.content[0].text.trim().toUpperCase()
-          : "";
-        const intentParts = intentText.split(/\s+/);
+      const intentText = intentResponse.content[0].type === "text"
+        ? intentResponse.content[0].text.trim().toUpperCase()
+        : "";
+      const intentParts = intentText.split(/\s+/);
 
-        const wantsJobs = intentParts[0]?.startsWith("YES") ?? false;
-        const wantsDashboard = intentParts[1]?.startsWith("YES") ?? false;
-        const wantsToHire = intentParts[2]?.startsWith("YES") ?? false;
+      const wantsJobs = intentParts[0]?.startsWith("YES") ?? false;
+      const wantsDashboard = intentParts[1]?.startsWith("YES") ?? false;
+      const wantsToHire = intentParts[2]?.startsWith("YES") ?? false;
 
-        console.log("[intent] raw:", intentText, "| wantsJobs:", wantsJobs, "wantsDashboard:", wantsDashboard, "wantsToHire:", wantsToHire);
+      console.log("[intent] raw:", intentText, "| wantsJobs:", wantsJobs, "wantsDashboard:", wantsDashboard, "wantsToHire:", wantsToHire);
 
-        if (wantsDashboard) {
-          const link = await getDashboardLink(user.id);
-          if (link) dashboardLink = link;
-        }
-
-        if (wantsToHire) {
-          const { data: existingEmployer } = await supabase
-            .from("employers")
-            .select("id")
-            .eq("contact_phone", phone_number)
-            .single();
-
-          if (!existingEmployer) {
-            await supabase.from("employers").insert({
-              contact_phone: phone_number,
-              business_name: "Pending",
-              employer_type: "informal",
-              phone_verified: false,
-              free_listing_used: false,
-              suspended: false,
-            });
-            console.log("[intent] Created placeholder employer record");
-          }
-
-          isEmployerMode = true;
-          console.log("[intent] Entering employer mode — existing:", !!existingEmployer);
-        }
-
-        if (wantsJobs && !isEmployerMode) {
-          const { data: profile } = await supabase
-            .from("user_profiles")
-            .select("*")
-            .eq("user_id", user.id)
-            .single();
-
-          if (profile) {
-            jobMatches = await matchJobs(profile, user.location_area ?? null, body).catch((err) => {
-              console.error("[job-matcher] Error:", err);
-              return [];
-            });
-
-            if (jobMatches.length) {
-              supabase
-                .from("user_profiles")
-                .upsert({ user_id: user.id, last_job_matches: jobMatches }, { onConflict: "user_id" })
-                .then();
-
-              getDashboardLink(user.id).then((link) => {
-                if (!link) return;
-                setTimeout(() => {
-                  sendWhatsAppMessage(from, `See your matches on your dashboard: ${link}`).catch(() => {});
-                }, 3000);
-              }).catch(() => {});
-            }
-          }
-        }
-      } catch (intentErr) {
-        console.error("[intent] Classification error:", intentErr);
+      // Update mode if intent signals a switch
+      if (wantsToHire && user.current_mode !== "hiring") {
+        supabase.from("users").update({ current_mode: "hiring" }).eq("id", user.id).then();
+        user = { ...user, current_mode: "hiring" };
+        isEmployerMode = true;
       }
+
+      if (wantsJobs && user.current_mode !== "seeking") {
+        supabase.from("users").update({ current_mode: "seeking" }).eq("id", user.id).then();
+        user = { ...user, current_mode: "seeking" };
+        isEmployerMode = false;
+      }
+
+      if (wantsDashboard) {
+        const link = await getDashboardLink(user.id);
+        if (link) dashboardLink = link;
+      }
+
+      if (wantsJobs && !isEmployerMode) {
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select("*")
+          .eq("user_id", user.id)
+          .single();
+
+        if (profile) {
+          jobMatches = await matchJobs(profile, user.location_area ?? null, body).catch((err) => {
+            console.error("[job-matcher] Error:", err);
+            return [];
+          });
+
+          if (jobMatches.length) {
+            supabase
+              .from("user_profiles")
+              .upsert({ user_id: user.id, last_job_matches: jobMatches }, { onConflict: "user_id" })
+              .then();
+
+            getDashboardLink(user.id).then((link) => {
+              if (!link) return;
+              setTimeout(() => {
+                sendWhatsAppMessage(from, `See your matches on your dashboard: ${link}`).catch(() => {});
+              }, 3000);
+            }).catch(() => {});
+          }
+        }
+      }
+    } catch (intentErr) {
+      console.error("[intent] Classification error:", intentErr);
     }
 
     // 6. Call Claude
@@ -514,7 +511,7 @@ export async function POST(req: NextRequest) {
       languageSwitched: isReturning ? languageSwitched : null,
       jobMatches: jobMatches.length ? jobMatches : undefined,
       dashboardLink,
-      isEmployerMode,
+      current_mode: user.current_mode as "seeking" | "hiring",
     });
 
     console.log("[1] Raw Claude reply:", rawReply);
