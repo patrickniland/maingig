@@ -659,9 +659,16 @@ export async function POST(req: NextRequest) {
 
     // 8b. Save employer listing when capture is complete
     if (employerData?.business_name && employerData?.job_title) {
-      saveEmployerListing(phone_number, employerData).then((jobId) => {
+      saveEmployerListing(phone_number, employerData).then(async (jobId) => {
         if (!jobId) return;
         console.log("[employer] Listing saved:", jobId);
+        const link = await getDashboardLink(user.id);
+        if (!link) return;
+        const dashMsg = `Your listing is live on MainGig. View and manage it here: ${link}`;
+        await sendWhatsAppMessage(from, dashMsg).catch(() => {});
+        await supabase.from("conversations").insert({
+          user_id: user.id, message_role: "assistant", message_content: dashMsg,
+        }).then();
       }).catch((err) => console.error("[employer] Save error:", err));
     }
 
