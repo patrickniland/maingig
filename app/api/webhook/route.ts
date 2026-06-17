@@ -661,7 +661,7 @@ export async function POST(req: NextRequest) {
     if (employerData?.business_name && employerData?.job_title) {
       saveEmployerListing(phone_number, employerData).then((jobId) => {
         if (!jobId) return;
-        console.log("[employer] Job listing created:", jobId);
+        console.log("[employer] Listing saved:", jobId);
       }).catch((err) => console.error("[employer] Save error:", err));
     }
 
