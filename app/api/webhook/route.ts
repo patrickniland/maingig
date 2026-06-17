@@ -74,12 +74,21 @@ async function updatePointsAndStreaks(userId: string, pointsToAdd: number) {
 }
 
 async function getDashboardLink(userId: string): Promise<string | null> {
-  const { data, error } = await supabase.rpc("generate_dashboard_token", { user_id: userId });
-  if (error || !data) {
+  const token =
+    crypto.randomUUID().replace(/-/g, "") +
+    crypto.randomUUID().replace(/-/g, "");
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { error } = await supabase
+    .from("users")
+    .update({ dashboard_token: token, token_expires_at: expiresAt })
+    .eq("id", userId);
+
+  if (error) {
     console.error("[dashboard-token] Error:", error);
     return null;
   }
-  return `${DASHBOARD_URL}?token=${data as string}`;
+  return `${DASHBOARD_URL}?token=${token}`;
 }
 
 const NAME_PATTERN = /(?:my name is|i'm|i am|call me)\s+([A-Z][a-z]+)/i;
@@ -99,6 +108,7 @@ type DataCapture = {
   awards?: string[];
   languages?: string[];
   interests?: string[];
+  placement_confirmed?: boolean;
 };
 
 type EmployerCapture = {
@@ -245,7 +255,35 @@ async function saveEmployerListing(phoneNumber: string, employer: EmployerCaptur
     ? `tel:${contactPhone}`
     : null;
 
-  // Create job listing
+  const employmentType = employer.employment_type
+    ? employer.employment_type.toLowerCase().replace(/\s+/g, "-")
+    : null;
+
+  // Dedup: if a listing with the same title already exists for this employer,
+  // enrich it with any new details rather than creating a duplicate.
+  const { data: existingJob } = await supabase
+    .from("jobs")
+    .select("id")
+    .eq("employer_id", employerId)
+    .eq("title", employer.job_title!)
+    .maybeSingle();
+
+  if (existingJob) {
+    const updates: Record<string, unknown> = {};
+    if (employer.job_description) updates.description = employer.job_description;
+    if (employer.requirements?.length) updates.requirements = employer.requirements;
+    if (employer.location_area) updates.location_area = employer.location_area;
+    if (employmentType) updates.employment_type = employmentType;
+    if (applicationUrl) updates.application_url = applicationUrl;
+
+    if (Object.keys(updates).length > 0) {
+      await supabase.from("jobs").update(updates).eq("id", existingJob.id);
+    }
+    console.log("[employer] Enriched existing listing:", existingJob.id);
+    return existingJob.id;
+  }
+
+  // Create new job listing
   const { data: job, error: jobError } = await supabase
     .from("jobs")
     .insert({
@@ -254,7 +292,7 @@ async function saveEmployerListing(phoneNumber: string, employer: EmployerCaptur
       description: employer.job_description ?? null,
       requirements: employer.requirements ?? [],
       location_area: employer.location_area ?? null,
-      employment_type: employer.employment_type ? employer.employment_type.toLowerCase().replace(" ", "-") : null,
+      employment_type: employmentType,
       application_url: applicationUrl,
       active: true,
       verified: true,
@@ -561,6 +599,23 @@ export async function POST(req: NextRequest) {
       saveProfileData(user.id, data, user.full_name ?? null).catch((err) =>
         console.error("Profile save error:", err)
       );
+
+      // If Sisi confirmed a placement, record it and update user status
+      if (data.placement_confirmed === true) {
+        const placedAt = new Date().toISOString();
+        supabase
+          .from("users")
+          .update({ status: "placed" })
+          .eq("id", user.id)
+          .then();
+        supabase
+          .from("placements")
+          .insert({ user_id: user.id, placed_at: placedAt })
+          .then((res) => {
+            if (res.error) console.error("[placement] Insert error:", res.error);
+            else console.log("[placement] Recorded for user:", user.id);
+          });
+      }
     }
 
     // 8b. Save employer listing when capture is complete

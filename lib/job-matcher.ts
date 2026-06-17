@@ -24,8 +24,15 @@ type RawJob = {
   requirements: string[] | null;
 };
 
-function tokenise(text: string): string[] {
-  return text.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+// Generic role suffixes that appear in many job titles without adding specificity —
+// "Sales Agent" matching every "X Agent" job is the canonical failure case.
+const TITLE_STOPWORDS = new Set(["agent"]);
+
+function tokenise(text: string, stopwords?: Set<string>): string[] {
+  return text
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !stopwords?.has(w));
 }
 
 function anyMatch(terms: string[], haystack: string): boolean {
@@ -53,7 +60,7 @@ export async function matchJobs(
   const skillTerms = (profile.skills ?? []).map((s) => s.toLowerCase());
 
   const experienceTerms = (profile.work_experience ?? []).flatMap((w) => [
-    ...(w.title ? tokenise(w.title) : []),
+    ...(w.title ? tokenise(w.title, TITLE_STOPWORDS) : []),
     ...(w.duties ?? []).flatMap((d) => tokenise(d)),
     ...(w.responsibilities ?? []).flatMap((r) => tokenise(r)),
   ]);
