@@ -122,6 +122,47 @@ type EmployerCapture = {
   listing_free?: boolean;
 };
 
+// DB check constraint allows: full-time | part-time | contract | casual | day-work | learnership
+const EMPLOYMENT_TYPE_MAP: Record<string, string> = {
+  // full-time
+  "full-time": "full-time",
+  "fulltime": "full-time",
+  "full time": "full-time",
+  "permanent": "full-time",
+  // part-time
+  "part-time": "part-time",
+  "parttime": "part-time",
+  "part time": "part-time",
+  // contract
+  "contract": "contract",
+  "contractor": "contract",
+  "fixed term": "contract",
+  "fixed-term": "contract",
+  // casual / temp
+  "casual": "casual",
+  "temp": "casual",
+  "temporary": "casual",
+  "temp/casual": "casual",
+  "temp casual": "casual",
+  // day work
+  "day work": "day-work",
+  "day-work": "day-work",
+  "daywork": "day-work",
+  "daily": "day-work",
+  "per day": "day-work",
+  // learnership
+  "learnership": "learnership",
+  "learner": "learnership",
+  "apprenticeship": "learnership",
+  "internship": "learnership",
+  "graduate": "learnership",
+};
+
+function normaliseEmploymentType(raw: string | undefined): string | null {
+  if (!raw) return null;
+  return EMPLOYMENT_TYPE_MAP[raw.toLowerCase().trim()] ?? null;
+}
+
 function detectRequestedLanguage(message: string): Language | null {
   for (const [lang, pattern] of Object.entries(LANGUAGE_TRIGGERS) as [Language, RegExp][]) {
     if (pattern.test(message)) return lang;
@@ -255,9 +296,7 @@ async function saveEmployerListing(phoneNumber: string, employer: EmployerCaptur
     ? `tel:${contactPhone}`
     : null;
 
-  const employmentType = employer.employment_type
-    ? employer.employment_type.toLowerCase().replace(/\s+/g, "-")
-    : null;
+  const employmentType = normaliseEmploymentType(employer.employment_type);
 
   // Dedup: if a listing with the same title already exists for this employer,
   // enrich it with any new details rather than creating a duplicate.
