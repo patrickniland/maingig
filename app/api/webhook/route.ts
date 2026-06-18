@@ -250,6 +250,7 @@ async function saveEmployerListing(
   phoneNumber: string,
   employer: EmployerCapture
 ): Promise<{ id: string; isNew: boolean } | null> {
+  console.log("[saveEmployerListing] called with:", JSON.stringify(employer));
   // Upsert employer record by contact_phone
   const { data: existingEmployer } = await supabase
     .from("employers")
@@ -695,8 +696,9 @@ Reply with exactly three words in this order: [1] [2] [3]`,
 
     // 8b. Save employer listing only after employer replies YES to confirm the summary
     console.log("[employer] employerData:", JSON.stringify(employerData));
+    console.log("[employer] listing_confirmed:", employerData?.listing_confirmed);
     if (employerData?.business_name && employerData?.job_title && employerData?.listing_confirmed === true) {
-      console.log("[employer] Condition met — calling saveEmployerListing");
+      console.log("[employer] calling saveEmployerListing...");
       saveEmployerListing(phone_number, employerData).then(async (result) => {
         console.log("[employer] saveEmployerListing result:", JSON.stringify(result));
         if (!result) return;
