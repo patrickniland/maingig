@@ -506,13 +506,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4. Load last 20 messages
-    const { data: history } = await supabase
-      .from("conversations")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(20);
+    // 4. Load conversation history and user profile in parallel
+    const [{ data: history }, { data: userProfile }] = await Promise.all([
+      supabase
+        .from("conversations")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(20),
+      supabase
+        .from("user_profiles")
+        .select("job_title, education_level, skills, work_experience, availability, awards, languages_spoken, interests")
+        .eq("user_id", user.id)
+        .single(),
+    ]);
 
     const orderedHistory: Message[] = (history ?? []).reverse();
 
@@ -564,14 +571,12 @@ export async function POST(req: NextRequest) {
       }
 
       if (wantsJobs && !isEmployerMode) {
-        const { data: profile } = await supabase
-          .from("user_profiles")
-          .select("*")
-          .eq("user_id", user.id)
-          .single();
-
-        if (profile) {
-          jobMatches = await matchJobs(profile, user.location_area ?? null, body).catch((err) => {
+        if (userProfile) {
+          jobMatches = await matchJobs(
+            userProfile as Parameters<typeof matchJobs>[0],
+            user.location_area ?? null,
+            body
+          ).catch((err) => {
             console.error("[job-matcher] Error:", err);
             return [];
           });
@@ -597,21 +602,14 @@ export async function POST(req: NextRequest) {
 
     // Auto-trigger: silently refresh dashboard matches when profile is rich enough.
     // Saves to DB only — does NOT pass to Sisi (avoids surfacing matches on every response).
-    if (!wantsJobs && !isEmployerMode && jobMatches.length === 0) {
-      const { data: profile } = await supabase
-        .from("user_profiles")
-        .select("skills, work_experience, education_level, availability")
-        .eq("user_id", user.id)
-        .single();
+    if (!wantsJobs && !isEmployerMode && jobMatches.length === 0 && userProfile) {
+      const profileRich =
+        ((userProfile.skills?.length ?? 0) > 0 || (userProfile.work_experience?.length ?? 0) > 0) &&
+        user.location_area;
 
-      const profileRich = (
-        (profile?.skills?.length ?? 0) > 0 ||
-        (profile?.work_experience?.length ?? 0) > 0
-      ) && user.location_area;
-
-      if (profileRich && profile) {
+      if (profileRich) {
         matchJobs(
-          profile as Parameters<typeof matchJobs>[0],
+          userProfile as Parameters<typeof matchJobs>[0],
           user.location_area ?? null,
           body
         ).then((autoMatches) => {
@@ -635,6 +633,8 @@ export async function POST(req: NextRequest) {
       jobMatches: jobMatches.length ? jobMatches : undefined,
       dashboardLink,
       current_mode: user.current_mode as "seeking" | "hiring",
+      location_area: user.location_area ?? null,
+      profile: userProfile ?? null,
     });
 
     console.log("[1] Raw Claude reply:", rawReply);

@@ -49,6 +49,22 @@ const LANGUAGE_LABELS: Record<Language, string> = {
   afrikaans: "Afrikaans",
 };
 
+export type ProfileSnapshot = {
+  job_title?: string | null;
+  education_level?: string | null;
+  skills?: string[] | null;
+  work_experience?: Array<{
+    title?: string;
+    company?: string;
+    start_date?: string;
+    end_date?: string;
+  }> | null;
+  availability?: string | null;
+  awards?: string[] | null;
+  languages_spoken?: string[] | null;
+  interests?: string[] | null;
+};
+
 export type UserContext = {
   full_name: string | null;
   preferred_language: Language;
@@ -58,6 +74,8 @@ export type UserContext = {
   jobMatches?: JobMatch[];
   dashboardLink?: string;
   current_mode: "seeking" | "hiring" | null;
+  location_area?: string | null;
+  profile?: ProfileSnapshot | null;
 };
 
 function buildSystemPrompt(ctx: UserContext): string {
@@ -82,7 +100,41 @@ function buildSystemPrompt(ctx: UserContext): string {
     parts.push(`This is a returning user. Pick up where you left off, don't re-introduce yourself.`);
   }
 
-  // Dashboard link — injected when the user asked for their profile page
+  // Profile snapshot — always injected so Sisi never asks about things she already knows
+  const p = ctx.profile;
+  if (p || ctx.location_area) {
+    const lines: string[] = [];
+    if (ctx.full_name)             lines.push(`Name: ${ctx.full_name}`);
+    if (ctx.location_area)         lines.push(`Location: ${ctx.location_area}`);
+    if (p?.job_title)              lines.push(`Job title / role: ${p.job_title}`);
+    if (p?.skills?.length)         lines.push(`Skills: ${p.skills.join(", ")}`);
+    if (p?.education_level)        lines.push(`Education: ${p.education_level}`);
+    if (p?.availability)           lines.push(`Availability: ${p.availability}`);
+    if (p?.languages_spoken?.length) lines.push(`Languages: ${p.languages_spoken.join(", ")}`);
+    if (p?.interests?.length)      lines.push(`Interests: ${p.interests.join(", ")}`);
+    if (p?.awards?.length)         lines.push(`Awards: ${p.awards.join(", ")}`);
+    if (p?.work_experience?.length) {
+      const exp = p.work_experience
+        .map((w) => {
+          const dates = [w.start_date, w.end_date].filter(Boolean).join("–");
+          return `${w.title ?? ""}${w.company ? ` at ${w.company}` : ""}${dates ? ` (${dates})` : ""}`;
+        })
+        .filter(Boolean);
+      if (exp.length) lines.push(`Work experience: ${exp.join("; ")}`);
+    }
+    if (lines.length) {
+      parts.push(
+        `Here is what you already know about this user. Never ask them to repeat any of this:\n${lines.join("\n")}`
+      );
+    }
+  }
+
+  // Dashboard link rule — always present to prevent Sisi echoing old links from history
+  parts.push(
+    `Never copy, paste, or repeat a dashboard link URL from the conversation history — those links expire and sending a stale one is confusing. If the user needs their dashboard link, tell them to ask and it will be sent. The only time you include a link is when one is explicitly handed to you below.`
+  );
+
+  // Dashboard link — injected only when the user explicitly asked for it this turn
   if (ctx.dashboardLink) {
     parts.push(
       `The user asked for their dashboard or profile link. Include this link naturally in your response — just give it to them directly, like "here's your link: ${ctx.dashboardLink}". Keep it conversational, no fanfare.`
