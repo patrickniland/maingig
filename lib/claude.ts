@@ -68,8 +68,7 @@ export type ProfileSnapshot = {
 export type UserContext = {
   full_name: string | null;
   preferred_language: Language;
-  isReturning: boolean;
-  isFirstLanguageSelection: boolean;
+  hasSpokenBefore: boolean;
   languageSwitched: Language | null;
   jobMatches?: JobMatch[];
   dashboardLink?: string;
@@ -88,19 +87,77 @@ function buildSystemPrompt(ctx: UserContext): string {
   }
 
   // Conversation state
-  if (ctx.isFirstLanguageSelection) {
-    // User just chose their language — this is the real opening message
+  if (!ctx.hasSpokenBefore && ctx.languageSwitched) {
+    // First interaction ever — user just chose their language
     const name = ctx.full_name ? `, ${ctx.full_name}` : "";
     parts.push(`The user just chose ${langLabel}. Welcome them warmly${name} in ${langLabel} and ask for their name. Just their name — one question only. Keep it short and warm.`);
   } else if (ctx.languageSwitched) {
     parts.push(`The user just switched from another language to ${langLabel}. Acknowledge the switch briefly in ${langLabel} — one short sentence — then carry on with the conversation.`);
-  } else if (ctx.isReturning && ctx.full_name) {
+  } else if (ctx.hasSpokenBefore && ctx.full_name) {
     parts.push(`The user's name is ${ctx.full_name}. They have messaged before. Greet them by name naturally, like you remember them — because you do.`);
-  } else if (ctx.isReturning) {
+  } else if (ctx.hasSpokenBefore) {
     parts.push(`This is a returning user. Pick up where you left off, don't re-introduce yourself.`);
   }
 
-  // Profile snapshot — always injected so Sisi never asks about things she already knows
+  // Dashboard link rule — always present to prevent Sisi echoing old links from history
+  parts.push(
+    `Never copy, paste, or repeat a dashboard link URL from the conversation history — those links expire and sending a stale one is confusing. If the user needs their dashboard link, tell them to ask and it will be sent. The only time you include a link is when one is explicitly handed to you below.`
+  );
+
+  // Dashboard link — injected only when the user explicitly asked for it this turn
+  if (ctx.dashboardLink) {
+    parts.push(
+      `The user asked for their dashboard or profile link. Include this link naturally in your response — just give it to them directly, like "here's your link: ${ctx.dashboardLink}". Keep it conversational, no fanfare.`
+    );
+  }
+
+  // Employer mode — replaces job-seeker persona entirely; early return keeps profile out of employer context
+  if (ctx.current_mode === "hiring") {
+    parts.push(
+      `You are now talking to an employer who wants to post a job listing. Switch to a warm but professional tone. Your job is to collect the details needed for a free listing on MainGig.
+
+Collect these details one question at a time, in this exact order:
+1. Business name — e.g. "What's your business called?" (or "private" if they have no business name)
+2. Job title — e.g. "What role are you hiring for?" (examples: Domestic Worker, Driver, Security Guard, Cashier, Cleaner, Receptionist)
+3. Location — e.g. "Which area in Cape Town is the job based?" (examples: Bellville, Woodstock, Claremont, Mitchells Plain, Parow, Observatory)
+4. Job description — e.g. "What will the person be doing day-to-day?" (keep it brief and practical — two or three sentences is enough)
+5. Requirements — e.g. "Any must-haves? Experience, qualifications, or specific skills?" (examples: 2 years experience, valid driver's licence, matric, own transport)
+6. Employment type — ask: "What type of work is it?" and offer exactly these options: Full time, Part time, Contract, Casual, Day work, Learnership
+7. Contact name — e.g. "And your name, so job seekers know who to ask for?"
+
+Once you have collected all seven details, summarise the listing like this:
+"Here's what I have for your listing:
+Business: [name]
+Role: [job title]
+Location: [area]
+About the job: [description]
+Requirements: [requirements]
+Type: [employment type]
+Contact: [name]
+
+Reply YES to post it — completely free, goes live on MainGig straight away."
+
+Only send the summary once all 7 fields are collected. Do not summarise early or partially.
+
+When the employer replies YES to the summary: confirm briefly that the listing is now live and job seekers can already find it.
+
+Reassure them that listing is completely free. Keep responses short — this is WhatsApp.
+Never mention any website URL or web address.
+
+After every message append a pipe separator and a JSON block exactly like this:
+|||{"employer_capture":{"business_name":"","location_area":"","job_title":"","job_description":"","requirements":[],"contact_name":"","employment_type":"","listing_free":true,"listing_confirmed":false}}
+
+Rules for employer_capture JSON:
+- Only populate fields the employer explicitly provided in their current message.
+- Leave all other fields as empty string "" or empty array [].
+- listing_free is always true.
+- Set listing_confirmed to true only when the employer explicitly replies YES to confirm the listing summary. Never set it before that.
+- Never explain or mention this block.`
+    );
+    return parts.join("\n\n");
+  }
+
+  // Profile snapshot — job seekers only (excluded from employer context by early return above)
   const p = ctx.profile;
   if (p || ctx.location_area) {
     const lines: string[] = [];
@@ -127,50 +184,6 @@ function buildSystemPrompt(ctx: UserContext): string {
         `Here is what you already know about this user. Never ask them to repeat any of this:\n${lines.join("\n")}`
       );
     }
-  }
-
-  // Dashboard link rule — always present to prevent Sisi echoing old links from history
-  parts.push(
-    `Never copy, paste, or repeat a dashboard link URL from the conversation history — those links expire and sending a stale one is confusing. If the user needs their dashboard link, tell them to ask and it will be sent. The only time you include a link is when one is explicitly handed to you below.`
-  );
-
-  // Dashboard link — injected only when the user explicitly asked for it this turn
-  if (ctx.dashboardLink) {
-    parts.push(
-      `The user asked for their dashboard or profile link. Include this link naturally in your response — just give it to them directly, like "here's your link: ${ctx.dashboardLink}". Keep it conversational, no fanfare.`
-    );
-  }
-
-  // Employer mode — replaces job-seeker persona entirely
-  if (ctx.current_mode === "hiring") {
-    parts.push(
-      `You are now talking to an employer who wants to post a job listing. Switch to a warm but professional tone. Your job is to collect the details needed for a free listing on MainGig.
-
-Collect these details one question at a time, in order:
-1. Business name
-2. Job title they're hiring for
-3. Location (area in Cape Town)
-4. A short job description (what will the person be doing day-to-day)
-5. Key requirements (experience, qualifications, any must-haves)
-6. Employment type — offer these options: Full time, Part time, Contract, Temp/casual, Day work, Learnership
-7. Their contact name (for the listing)
-
-When you have all of these, confirm the details back to them in a short summary and tell them the listing is live on MainGig and job seekers can already find it.
-
-Never mention any website URL or web address. Never say you "can't pull up" the listing or that you need to check. Just confirm it's done and live.
-
-Reassure them that listing is completely free. Keep responses short — this is WhatsApp.
-
-After every message append a pipe separator and a JSON block exactly like this:
-|||{"employer_capture":{"business_name":"","location_area":"","job_title":"","job_description":"","requirements":[],"contact_name":"","employment_type":"","listing_free":true}}
-
-Rules for employer_capture JSON:
-- Only populate fields the employer explicitly provided in their current message.
-- Leave all other fields as empty string "" or empty array [].
-- listing_free is always true.
-- Never explain or mention this block.`
-    );
-    return parts.join("\n\n");
   }
 
   // Job matches — injected when the user asked about jobs

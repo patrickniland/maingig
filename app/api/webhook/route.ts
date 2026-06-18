@@ -24,7 +24,7 @@ const CV_REQUEST = /\b(cv|curriculum vitae|my cv|generate cv|create cv|send cv|g
 
 const MODE_SEEKING = /\b(find work|looking for work|find me work|need a job|find a job|get a job|seeking work|want work|want a job|find work)\b/i;
 const MODE_HIRING  = /\b(post a job|posting a job|i want to hire|need staff|find staff|find workers|recruit|i have a vacancy|post a vacancy|i want to post)\b/i;
-const MODE_PROMPT  = "Are you looking for work, or are you posting a job?\nReply: Find Work or Post a Job";
+const MODE_PROMPT  = "Are you looking for work, or are you hiring?\nReply: 1 for Looking for work, 2 for Looking to hire, 3 for Both";
 
 const DASHBOARD_URL = "https://maingig.vercel.app/dashboard";
 
@@ -120,6 +120,7 @@ type EmployerCapture = {
   contact_name?: string;
   employment_type?: string;
   listing_free?: boolean;
+  listing_confirmed?: boolean;
 };
 
 // DB check constraint allows: full-time | part-time | contract | casual | day-work | learnership
@@ -370,8 +371,6 @@ export async function POST(req: NextRequest) {
       .eq("phone_number", phone_number)
       .single();
 
-    const isReturning = !!user;
-
     if (!user) {
       const { data: newUser, error } = await supabase
         .from("users")
@@ -415,13 +414,17 @@ export async function POST(req: NextRequest) {
       return new NextResponse("OK", { status: 200 });
     }
 
-    // 3b. If language set but mode not yet chosen → detect from message or prompt
+    // 3b. If language set but mode not yet chosen → require explicit reply to prompt
     if (!user.current_mode) {
-      const modeFromMessage = MODE_HIRING.test(body)
-        ? "hiring"
-        : MODE_SEEKING.test(body)
-        ? "seeking"
-        : null;
+      const trimmedBody = body.trim();
+      let modeFromMessage: "seeking" | "hiring" | null = null;
+      // Only accept explicit responses to the mode prompt — broad phrase matching causes
+      // the prompt to be skipped when the user's first message happens to contain "need a job" etc.
+      if (/^\s*[13]\s*$/.test(trimmedBody) || /\bboth\b/i.test(trimmedBody)) {
+        modeFromMessage = "seeking";
+      } else if (/^\s*2\s*$/.test(trimmedBody)) {
+        modeFromMessage = "hiring";
+      }
 
       if (modeFromMessage) {
         await supabase.from("users").update({ current_mode: modeFromMessage }).eq("id", user.id);
@@ -522,12 +525,15 @@ export async function POST(req: NextRequest) {
     ]);
 
     const orderedHistory: Message[] = (history ?? []).reverse();
+    const hasSpokenBefore = (history ?? []).some((m) => m.message_role === "assistant");
 
     // 5. Derive mode from user record; intent classification can update it this turn
     let isEmployerMode = user.current_mode === "hiring";
     let jobMatches: JobMatch[] = [];
     let dashboardLink: string | undefined;
     let wantsJobs = false;
+    // Cached to avoid generating two tokens when wantsJobs and wantsDashboard are both true
+    let sharedLink: string | null | undefined = undefined;
 
     // 5b. Intent classification — skip in employer mode (Sisi handles that flow via system prompt)
     if (!isEmployerMode) try {
@@ -580,8 +586,8 @@ Reply with exactly three words in this order: [1] [2] [3]`,
       }
 
       if (wantsDashboard) {
-        const link = await getDashboardLink(user.id);
-        if (link) dashboardLink = link;
+        sharedLink = await getDashboardLink(user.id);
+        if (sharedLink) dashboardLink = sharedLink;
       }
 
       if (wantsJobs && !isEmployerMode) {
@@ -601,7 +607,11 @@ Reply with exactly three words in this order: [1] [2] [3]`,
               .upsert({ user_id: user.id, last_job_matches: jobMatches }, { onConflict: "user_id" })
               .then();
 
-            getDashboardLink(user.id).then((link) => {
+            // Reuse already-generated token or create one now — never overwrite with a second token
+            (sharedLink !== undefined
+              ? Promise.resolve(sharedLink)
+              : getDashboardLink(user.id).then((l) => { sharedLink = l; return l; })
+            ).then((link) => {
               if (!link) return;
               setTimeout(() => {
                 sendWhatsAppMessage(from, `See your matches on your dashboard: ${link}`).catch(() => {});
@@ -643,9 +653,8 @@ Reply with exactly three words in this order: [1] [2] [3]`,
     const rawReply = await callClaude(orderedHistory, body, {
       full_name: user.full_name ?? null,
       preferred_language: user.preferred_language as Language,
-      isReturning,
-      isFirstLanguageSelection: !isReturning && !!languageSwitched,
-      languageSwitched: isReturning ? languageSwitched : null,
+      hasSpokenBefore,
+      languageSwitched,
       jobMatches: jobMatches.length ? jobMatches : undefined,
       dashboardLink,
       current_mode: user.current_mode as "seeking" | "hiring",
@@ -684,8 +693,8 @@ Reply with exactly three words in this order: [1] [2] [3]`,
       }
     }
 
-    // 8b. Save employer listing when capture is complete
-    if (employerData?.business_name && employerData?.job_title) {
+    // 8b. Save employer listing only after employer replies YES to confirm the summary
+    if (employerData?.business_name && employerData?.job_title && employerData?.listing_confirmed === true) {
       saveEmployerListing(phone_number, employerData).then(async (result) => {
         if (!result) return;
         console.log(`[employer] Listing ${result.isNew ? "created" : "enriched"}:`, result.id);
