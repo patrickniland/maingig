@@ -28,6 +28,44 @@ type RawJob = {
 // "Sales Agent" matching every "X Agent" job is the canonical failure case.
 const TITLE_STOPWORDS = new Set(["agent"]);
 
+// Stem expansions: each entry maps a root to the set of forms that should match each other.
+// When a term matches any form in a group, all forms are added to the search set.
+const STEM_GROUPS: string[][] = [
+  ["market", "marketing", "marketer", "markets"],
+  ["manage", "manager", "management", "managing"],
+  ["admin", "administration", "administrative", "administrator"],
+  ["develop", "developer", "development", "developing"],
+  ["design", "designer", "designing"],
+  ["sell", "sales", "selling", "seller"],
+  ["account", "accountant", "accounting", "accounts"],
+  ["drive", "driver", "driving"],
+  ["clean", "cleaner", "cleaning"],
+  ["cook", "cooker", "cooking"],
+  ["teach", "teacher", "teaching"],
+  ["assist", "assistant", "assisting"],
+  ["reception", "receptionist"],
+  ["finance", "financial", "financing"],
+  ["communicate", "communication", "communications"],
+  ["coordinate", "coordinator", "coordinating"],
+];
+
+// Build a lookup: term → all related terms (including itself)
+const STEM_MAP = new Map<string, string[]>();
+for (const group of STEM_GROUPS) {
+  for (const word of group) {
+    STEM_MAP.set(word, group);
+  }
+}
+
+function expandTerms(terms: string[]): string[] {
+  const expanded = new Set(terms);
+  for (const term of terms) {
+    const related = STEM_MAP.get(term);
+    if (related) related.forEach((r) => expanded.add(r));
+  }
+  return Array.from(expanded);
+}
+
 function tokenise(text: string, stopwords?: Set<string>): string[] {
   return text
     .toLowerCase()
@@ -57,13 +95,15 @@ export async function matchJobs(
 
   // ── Build search term sets ────────────────────────────────────────────────
 
-  const skillTerms = (profile.skills ?? []).map((s) => s.toLowerCase());
+  const skillTerms = expandTerms((profile.skills ?? []).map((s) => s.toLowerCase()));
 
-  const experienceTerms = (profile.work_experience ?? []).flatMap((w) => [
-    ...(w.title ? tokenise(w.title, TITLE_STOPWORDS) : []),
-    ...(w.duties ?? []).flatMap((d) => tokenise(d)),
-    ...(w.responsibilities ?? []).flatMap((r) => tokenise(r)),
-  ]);
+  const experienceTerms = expandTerms(
+    (profile.work_experience ?? []).flatMap((w) => [
+      ...(w.title ? tokenise(w.title, TITLE_STOPWORDS) : []),
+      ...(w.duties ?? []).flatMap((d) => tokenise(d)),
+      ...(w.responsibilities ?? []).flatMap((r) => tokenise(r)),
+    ])
+  );
 
   const educationTerms = tokenise(profile.education_level ?? "");
 
