@@ -720,19 +720,25 @@ Reply with exactly three words in this order: [1] [2] [3]`,
     console.log("[employer] listing_confirmed:", employerData?.listing_confirmed);
     if (employerData?.business_name && employerData?.job_title && employerData?.listing_confirmed === true) {
       console.log("[employer] calling saveEmployerListing...");
-      saveEmployerListing(phone_number, employerData).then(async (result) => {
+      try {
+        const result = await saveEmployerListing(phone_number, employerData);
         console.log("[employer] saveEmployerListing result:", JSON.stringify(result));
-        if (!result) return;
-        console.log(`[employer] Listing ${result.isNew ? "created" : "enriched"}:`, result.id);
-        if (!result.isNew) return;
-        const link = await getDashboardLink(user.id);
-        if (!link) return;
-        const dashMsg = `Your listing is live on MainGig. View and manage it here: ${link}`;
-        await sendWhatsAppMessage(from, dashMsg).catch(() => {});
-        await supabase.from("conversations").insert({
-          user_id: user.id, message_role: "assistant", message_content: dashMsg,
-        }).then();
-      }).catch((err) => console.error("[employer] Save error:", err));
+        if (result) {
+          console.log(`[employer] Listing ${result.isNew ? "created" : "enriched"}:`, result.id);
+          if (result.isNew) {
+            const link = await getDashboardLink(user.id);
+            if (link) {
+              const dashMsg = `Your listing is live on MainGig. View and manage it here: ${link}`;
+              await sendWhatsAppMessage(from, dashMsg).catch(() => {});
+              await supabase.from("conversations").insert({
+                user_id: user.id, message_role: "assistant", message_content: dashMsg,
+              }).then();
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[employer] Save error:", err);
+      }
     }
 
     // 9. Persist conversation (store clean message, not the raw reply with JSON)
