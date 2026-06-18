@@ -32,11 +32,13 @@ async function getDashboardData(token: string): Promise<{
   // Fetch employer record — prefer employer_id on user record (avoids phone format mismatch),
   // fall back to contact_phone lookup for older records
   const employerLookupId = (user as Record<string, unknown>).employer_id as string | null ?? null;
-  const { data: employer } = employerLookupId
+  console.log("[dashboard] user.id:", user.id, "user.employer_id:", employerLookupId, "user.phone_number:", user.phone_number);
+
+  const { data: employer, error: employerError } = employerLookupId
     ? await supabase.from("employers").select("id, contact_name, business_name").eq("id", employerLookupId).single()
     : await supabase.from("employers").select("id, contact_name, business_name").eq("contact_phone", user.phone_number).single();
 
-  console.log("[dashboard] employer lookup (id:", employerLookupId, "phone:", user.phone_number, ") →", employer?.id);
+  console.log("[dashboard] employer lookup result:", JSON.stringify(employer), "error:", employerError?.message);
 
   let jobPostings: JobPosting[] = [];
   if (employer) {
@@ -45,8 +47,11 @@ async function getDashboardData(token: string): Promise<{
       .select("id, title, location_area, employment_type, created_at, active")
       .eq("employer_id", employer.id)
       .order("created_at", { ascending: false });
-    console.log("[dashboard] jobs for employer", employer.id, "→", jobs?.length ?? 0, "error:", jobsError);
+    console.log("[dashboard] jobs query employer_id:", employer.id, "→ count:", jobs?.length ?? 0, "error:", jobsError?.message);
+    console.log("[dashboard] jobs data:", JSON.stringify(jobs));
     jobPostings = (jobs ?? []) as JobPosting[];
+  } else {
+    console.log("[dashboard] no employer found — skipping jobs query");
   }
 
   const jobMatches = (profile?.last_job_matches as JobMatch[] | null) ?? [];
