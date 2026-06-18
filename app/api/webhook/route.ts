@@ -559,6 +559,7 @@ export async function POST(req: NextRequest) {
     let jobMatches: JobMatch[] = [];
     let dashboardLink: string | undefined;
     let wantsJobs = false;
+    let wantsToApply = false;
     // Cached to avoid generating two tokens when wantsJobs and wantsDashboard are both true
     let sharedLink: string | null | undefined = undefined;
 
@@ -566,10 +567,10 @@ export async function POST(req: NextRequest) {
     if (!isEmployerMode) try {
       const intentResponse = await anthropic.messages.create({
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 30,
+        max_tokens: 40,
         messages: [{
           role: "user",
-          content: `Classify this WhatsApp message into three categories. Answer YES or NO for each, separated by spaces.
+          content: `Classify this WhatsApp message into four categories. Answer YES or NO for each, separated by spaces.
 
 1. JOB SEEKER — is this person looking for a job to apply to?
 Examples: "find me work" "any jobs" "I need a job" "looking for work" "any vacancies"
@@ -580,23 +581,27 @@ Examples: "show my profile" "my dashboard" "see my cv" "send me my profile link"
 3. EMPLOYER — is this person an employer wanting to hire someone or post a job?
 Examples: "I want to hire" "I need staff" "post a job" "I have a vacancy" "I need a domestic worker" "I need a driver" "I need a cleaner" "I am looking for a worker" "I need someone to work for me" "I want to find an employee" "I need to fill a position" "I want to recruit"
 
+4. APPLYING — is this person saying they want to apply for a specific job, asking how to apply, or saying they have applied?
+Examples: "I want to apply" "how do I apply" "I'm applying" "applying now" "I applied" "send them my CV" "I'll apply for that one"
+
 Message: "${body}"
 
-Reply with exactly three words in this order: [1] [2] [3]`,
+Reply with exactly four words in this order: [1] [2] [3] [4]`,
         }],
       });
 
       const intentText = intentResponse.content[0].type === "text"
         ? intentResponse.content[0].text.trim().toUpperCase()
         : "";
-      // Split on whitespace or slash to handle both "YES NO YES" and "YES/NO/YES" formats
+      // Split on whitespace or slash to handle both "YES NO YES NO" and "YES/NO/YES/NO" formats
       const intentParts = intentText.split(/[\s/]+/);
 
       wantsJobs = intentParts[0]?.startsWith("YES") ?? false;
       const wantsDashboard = intentParts[1]?.startsWith("YES") ?? false;
       const wantsToHire = intentParts[2]?.startsWith("YES") ?? false;
+      wantsToApply = intentParts[3]?.startsWith("YES") ?? false;
 
-      console.log("[intent] raw:", intentText, "| wantsJobs:", wantsJobs, "wantsDashboard:", wantsDashboard, "wantsToHire:", wantsToHire);
+      console.log("[intent] raw:", intentText, "| wantsJobs:", wantsJobs, "wantsDashboard:", wantsDashboard, "wantsToHire:", wantsToHire, "wantsToApply:", wantsToApply);
 
       // Update mode only if already set — mode prompt owns the initial assignment
       if (wantsToHire && user.current_mode !== null && user.current_mode !== "hiring") {
@@ -683,6 +688,65 @@ Reply with exactly three words in this order: [1] [2] [3]`,
             .upsert({ user_id: user.id, last_job_matches: autoMatches }, { onConflict: "user_id" })
             .then();
         }
+      }
+    }
+
+    // 5c. Increment view_count on matched jobs (fire and forget analytics)
+    if (jobMatches.length) {
+      for (const match of jobMatches) {
+        if (match.id) {
+          supabase.from("jobs").select("view_count").eq("id", match.id).single()
+            .then(({ data }) => {
+              supabase.from("jobs")
+                .update({ view_count: (data?.view_count ?? 0) + 1 })
+                .eq("id", match.id)
+                .then();
+            });
+        }
+      }
+    }
+
+    // 5d. Handle application intent — increment count and notify employer
+    if (wantsToApply && !isEmployerMode) {
+      try {
+        const { data: savedProfile } = await supabase
+          .from("user_profiles")
+          .select("last_job_matches")
+          .eq("user_id", user.id)
+          .single();
+
+        const lastMatches = (savedProfile?.last_job_matches ?? []) as Array<JobMatch & { id?: string }>;
+        const topJob = lastMatches[0];
+
+        if (topJob?.id) {
+          const { data: jobData } = await supabase
+            .from("jobs")
+            .select("id, title, location_area, application_count, employers(contact_phone, contact_name)")
+            .eq("id", topJob.id)
+            .single();
+
+          if (jobData) {
+            supabase.from("jobs")
+              .update({ application_count: ((jobData.application_count as number | null) ?? 0) + 1 })
+              .eq("id", topJob.id)
+              .then();
+
+            const employer = (Array.isArray(jobData.employers) ? jobData.employers[0] : jobData.employers) as { contact_phone: string | null; contact_name: string | null } | null;
+            if (employer?.contact_phone) {
+              const contactName = employer.contact_name ?? "there";
+              const loc = (jobData.location_area as string | null) ?? "Cape Town";
+              const waMsg = `Hi ${contactName}, someone just applied for your ${jobData.title} listing in ${loc}. They'll be in touch with you directly.`;
+              const toNumber = employer.contact_phone.startsWith("whatsapp:")
+                ? employer.contact_phone
+                : `whatsapp:${employer.contact_phone}`;
+              sendWhatsAppMessage(toNumber, waMsg).catch((err) =>
+                console.error("[apply] Employer notification error:", err)
+              );
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[apply] Error handling application:", err);
       }
     }
 

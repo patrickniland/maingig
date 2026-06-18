@@ -20,6 +20,10 @@ export type JobPosting = {
   employment_type: string | null;
   posted_at: string;
   active: boolean;
+  description: string | null;
+  requirements: string[] | null;
+  view_count: number | null;
+  application_count: number | null;
 };
 
 type Props = {
@@ -259,30 +263,116 @@ function SeekerTab({
 }
 
 function EmployerTab({ jobPostings }: { jobPostings: JobPosting[] }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [closedIds, setClosedIds] = useState<Set<string>>(new Set());
+  const [closingId, setClosingId] = useState<string | null>(null);
+
   function formatDate(iso: string) {
     return new Date(iso).toLocaleDateString("en-ZA", { day: "numeric", month: "short", year: "numeric" });
+  }
+
+  async function handleClose(jobId: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    setClosingId(jobId);
+    try {
+      const res = await fetch("/api/jobs/close", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId }),
+      });
+      if (res.ok) {
+        setClosedIds((prev) => new Set([...prev, jobId]));
+      }
+    } finally {
+      setClosingId(null);
+    }
   }
 
   return (
     <>
       {jobPostings.length > 0 ? (
         <div>
-          {jobPostings.map((job) => (
-            <div key={job.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-4">
-              <div className="flex items-start justify-between gap-2 mb-1">
-                <p className="font-semibold text-sm text-gray-800 leading-snug">{job.title}</p>
-                <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${
-                  job.active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400"
-                }`}>
-                  {job.active ? "Active" : "Inactive"}
-                </span>
+          {jobPostings.map((job) => {
+            const isActive = job.active && !closedIds.has(job.id);
+            const isExpanded = expandedId === job.id;
+            const editUrl = `https://wa.me/14155238886?text=${encodeURIComponent(`I want to edit my ${job.title} listing`)}`;
+
+            return (
+              <div key={job.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 mb-4 overflow-hidden">
+
+                {/* Always-visible header — click to expand */}
+                <button
+                  onClick={() => setExpandedId(isExpanded ? null : job.id)}
+                  className="w-full text-left p-5"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <p className="font-semibold text-sm text-gray-800 leading-snug">{job.title}</p>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                        isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400"
+                      }`}>
+                        {isActive ? "Active" : "Inactive"}
+                      </span>
+                      <span className="text-gray-300 text-xs">{isExpanded ? "▲" : "▼"}</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-400 mb-1">
+                    {[job.location_area, job.employment_type].filter(Boolean).join(" · ")}
+                  </p>
+                  <p className="text-xs text-gray-400 mb-2">Posted {formatDate(job.posted_at)}</p>
+                  <div className="flex gap-4 text-xs text-gray-400">
+                    <span>👁 {job.view_count ?? 0} views</span>
+                    <span>📋 {job.application_count ?? 0} applications</span>
+                  </div>
+                </button>
+
+                {/* Expanded details */}
+                {isExpanded && (
+                  <div className="px-5 pb-5 border-t border-gray-100 pt-4">
+                    {job.description && (
+                      <div className="mb-3">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">About the job</p>
+                        <p className="text-sm text-gray-700 leading-relaxed">{job.description}</p>
+                      </div>
+                    )}
+                    {!!job.requirements?.length && (
+                      <div className="mb-4">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Requirements</p>
+                        <ul className="space-y-1">
+                          {job.requirements.map((req, i) => (
+                            <li key={i} className="text-sm text-gray-600 flex gap-1.5">
+                              <span className="shrink-0">•</span>
+                              <span>{req}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    <div className="flex gap-2 mt-4">
+                      <a
+                        href={editUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex-1 text-center text-xs font-semibold border border-green-800 text-green-800 rounded-lg py-2.5"
+                      >
+                        Edit listing
+                      </a>
+                      {isActive && (
+                        <button
+                          onClick={(e) => handleClose(job.id, e)}
+                          disabled={closingId === job.id}
+                          className="flex-1 text-xs font-semibold border border-red-300 text-red-600 rounded-lg py-2.5 disabled:opacity-50"
+                        >
+                          {closingId === job.id ? "Closing…" : "Close listing"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
-              <p className="text-xs text-gray-400 mb-1">
-                {[job.location_area, job.employment_type].filter(Boolean).join(" · ")}
-              </p>
-              <p className="text-xs text-gray-400">Posted {formatDate(job.posted_at)}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 text-center">

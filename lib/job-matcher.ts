@@ -4,6 +4,7 @@ import type { UserProfile } from "./supabase";
 export type MatchStrength = "strong" | "good" | "possible";
 
 export type JobMatch = {
+  id: string;
   title: string;
   company: string | null;
   location_area: string;
@@ -193,6 +194,7 @@ export async function matchJobs(
   const top3 = candidates.sort((a, b) => b.score - a.score).slice(0, 3);
 
   return top3.map(({ job, match_strength }) => ({
+    id: job.id,
     title: job.title,
     company: null,
     location_area: job.location_area ?? "Cape Town",
