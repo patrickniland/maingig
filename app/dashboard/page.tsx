@@ -5,12 +5,15 @@ import type { JobMatch, JobPosting } from "./DashboardTabs";
 
 // ── Data fetching ──────────────────────────────────────────────────────────
 
+type EmployerInfo = { id: string; contact_name: string | null; business_name: string | null };
+
 async function getDashboardData(token: string): Promise<{
   user: User;
   profile: UserProfile | null;
   stats: PointsAndStreaks | null;
   jobMatches: JobMatch[];
   jobPostings: JobPosting[];
+  employer: EmployerInfo | null;
 } | null> {
   const { data: user, error } = await supabase
     .from("users")
@@ -26,20 +29,23 @@ async function getDashboardData(token: string): Promise<{
     supabase.from("points_and_streaks").select("*").eq("user_id", user.id).single(),
   ]);
 
-  // Fetch employer job postings for this phone number
+  // Fetch employer record and job postings for this phone number
   const { data: employer } = await supabase
     .from("employers")
-    .select("id")
+    .select("id, contact_name, business_name")
     .eq("contact_phone", user.phone_number)
     .single();
 
+  console.log("[dashboard] employer lookup for", user.phone_number, "→", employer);
+
   let jobPostings: JobPosting[] = [];
   if (employer) {
-    const { data: jobs } = await supabase
+    const { data: jobs, error: jobsError } = await supabase
       .from("jobs")
       .select("id, title, location_area, employment_type, created_at, active")
       .eq("employer_id", employer.id)
       .order("created_at", { ascending: false });
+    console.log("[dashboard] jobs query for employer", employer.id, "→", jobs?.length ?? 0, "results, error:", jobsError);
     jobPostings = (jobs ?? []) as JobPosting[];
   }
 
@@ -51,6 +57,7 @@ async function getDashboardData(token: string): Promise<{
     stats: points ?? null,
     jobMatches,
     jobPostings,
+    employer: employer ?? null,
   };
 }
 
@@ -87,7 +94,8 @@ export default async function DashboardPage({
   }
 
   const { user, profile, stats, jobMatches, jobPostings } = result;
-  const displayName = user.full_name ?? user.phone_number;
+  const displayName = result.employer?.contact_name ?? user.full_name ?? user.phone_number;
+  const businessName = result.employer?.business_name ?? null;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -97,7 +105,8 @@ export default async function DashboardPage({
         <p className="text-xs font-semibold uppercase tracking-widest text-green-100 mb-1">
           MainGig
         </p>
-        <h1 className="text-2xl font-bold leading-tight mb-3">{displayName}</h1>
+        <h1 className="text-2xl font-bold leading-tight mb-1">{displayName}</h1>
+        {businessName && <p className="text-sm text-green-200 mb-2">{businessName}</p>}
 
         {stats && (
           <div className="flex items-center gap-3 flex-wrap">
