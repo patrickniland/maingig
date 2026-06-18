@@ -99,12 +99,9 @@ export default async function DashboardPage({
   }
 
   const { user, profile, stats, jobMatches, jobPostings } = result;
-  // Only use employer contact_name when user is in hiring mode — otherwise a user
-  // who tested the employer flow would see their employer contact name instead of their own name
-  const isHiring = user.current_mode === "hiring";
-  const displayName = (isHiring ? result.employer?.contact_name : null) ?? user.full_name ?? user.phone_number;
-  const businessName = isHiring ? (result.employer?.business_name ?? null) : null;
-  console.log("[dashboard] current_mode:", user.current_mode, "employer.contact_name:", result.employer?.contact_name, "user.full_name:", user.full_name, "→ showing:", displayName);
+  const displayName = user.full_name ?? user.phone_number;
+  const businessName = user.current_mode === "hiring" ? (result.employer?.business_name ?? null) : null;
+  console.log("[dashboard] current_mode:", user.current_mode, "user.full_name:", user.full_name, "→ showing:", displayName);
 
   return (
     <div className="min-h-screen bg-gray-50">
