@@ -533,17 +533,31 @@ export async function POST(req: NextRequest) {
     if (!isEmployerMode) try {
       const intentResponse = await anthropic.messages.create({
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 20,
+        max_tokens: 30,
         messages: [{
           role: "user",
-          content: `Classify this message with YES or NO for each:\n1. Looking for a JOB to apply for (e.g. 'find me work', 'any jobs', 'I need a job')\n2. Asking to see their DASHBOARD or profile (e.g. 'show my profile', 'my dashboard', 'see my cv')\n3. Wanting to POST a job, HIRE someone, or FIND STAFF for their business (e.g. 'I want to hire', 'I want to post a job', 'I need staff', 'I want to find someone', 'I am looking for a worker', 'I want to recruit', 'I have a vacancy', 'I need to fill a position', 'I want to hire someone', 'looking for an employee')\n\nMessage: "${body}"\n\nAnswer with exactly: YES/NO YES/NO YES/NO\nOnly answer YES if you are certain. When in doubt answer NO.`,
+          content: `Classify this WhatsApp message into three categories. Answer YES or NO for each, separated by spaces.
+
+1. JOB SEEKER — is this person looking for a job to apply to?
+Examples: "find me work" "any jobs" "I need a job" "looking for work" "any vacancies"
+
+2. DASHBOARD — are they asking to see their profile, CV, or dashboard link?
+Examples: "show my profile" "my dashboard" "see my cv" "send me my profile link"
+
+3. EMPLOYER — is this person an employer wanting to hire someone or post a job?
+Examples: "I want to hire" "I need staff" "post a job" "I have a vacancy" "I need a domestic worker" "I need a driver" "I need a cleaner" "I am looking for a worker" "I need someone to work for me" "I want to find an employee" "I need to fill a position" "I want to recruit"
+
+Message: "${body}"
+
+Reply with exactly three words in this order: [1] [2] [3]`,
         }],
       });
 
       const intentText = intentResponse.content[0].type === "text"
         ? intentResponse.content[0].text.trim().toUpperCase()
         : "";
-      const intentParts = intentText.split(/\s+/);
+      // Split on whitespace or slash to handle both "YES NO YES" and "YES/NO/YES" formats
+      const intentParts = intentText.split(/[\s/]+/);
 
       wantsJobs = intentParts[0]?.startsWith("YES") ?? false;
       const wantsDashboard = intentParts[1]?.startsWith("YES") ?? false;
@@ -597,6 +611,8 @@ export async function POST(req: NextRequest) {
         }
       }
     } catch (intentErr) {
+      // On error: log and fall through — callClaude below still runs with full context,
+      // so Sisi handles the message naturally without any intent-driven enhancements.
       console.error("[intent] Classification error:", intentErr);
     }
 
