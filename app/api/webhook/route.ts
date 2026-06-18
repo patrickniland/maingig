@@ -245,7 +245,10 @@ async function saveProfileData(userId: string, data: DataCapture, existingFullNa
   ]);
 }
 
-async function saveEmployerListing(phoneNumber: string, employer: EmployerCapture): Promise<string | null> {
+async function saveEmployerListing(
+  phoneNumber: string,
+  employer: EmployerCapture
+): Promise<{ id: string; isNew: boolean } | null> {
   // Upsert employer record by contact_phone
   const { data: existingEmployer } = await supabase
     .from("employers")
@@ -319,7 +322,7 @@ async function saveEmployerListing(phoneNumber: string, employer: EmployerCaptur
       await supabase.from("jobs").update(updates).eq("id", existingJob.id);
     }
     console.log("[employer] Enriched existing listing:", existingJob.id);
-    return existingJob.id;
+    return { id: existingJob.id, isNew: false };
   }
 
   // Create new job listing
@@ -345,7 +348,7 @@ async function saveEmployerListing(phoneNumber: string, employer: EmployerCaptur
     return null;
   }
 
-  return job.id;
+  return { id: job.id, isNew: true };
 }
 
 export async function POST(req: NextRequest) {
@@ -519,8 +522,8 @@ export async function POST(req: NextRequest) {
     let dashboardLink: string | undefined;
     let wantsJobs = false;
 
-    // 5b. Intent classification — always run to allow mode switching mid-conversation
-    try {
+    // 5b. Intent classification — skip in employer mode (Sisi handles that flow via system prompt)
+    if (!isEmployerMode) try {
       const intentResponse = await anthropic.messages.create({
         model: "claude-haiku-4-5-20251001",
         max_tokens: 20,
@@ -592,7 +595,8 @@ export async function POST(req: NextRequest) {
       console.error("[intent] Classification error:", intentErr);
     }
 
-    // Auto-trigger job matching if profile is rich enough and no explicit intent
+    // Auto-trigger: silently refresh dashboard matches when profile is rich enough.
+    // Saves to DB only — does NOT pass to Sisi (avoids surfacing matches on every response).
     if (!wantsJobs && !isEmployerMode && jobMatches.length === 0) {
       const { data: profile } = await supabase
         .from("user_profiles")
@@ -606,11 +610,18 @@ export async function POST(req: NextRequest) {
       ) && user.location_area;
 
       if (profileRich && profile) {
-        jobMatches = await matchJobs(
+        matchJobs(
           profile as Parameters<typeof matchJobs>[0],
           user.location_area ?? null,
           body
-        ).catch(() => []);
+        ).then((autoMatches) => {
+          if (autoMatches.length) {
+            supabase
+              .from("user_profiles")
+              .upsert({ user_id: user.id, last_job_matches: autoMatches }, { onConflict: "user_id" })
+              .then();
+          }
+        }).catch(() => {});
       }
     }
 
@@ -659,9 +670,10 @@ export async function POST(req: NextRequest) {
 
     // 8b. Save employer listing when capture is complete
     if (employerData?.business_name && employerData?.job_title) {
-      saveEmployerListing(phone_number, employerData).then(async (jobId) => {
-        if (!jobId) return;
-        console.log("[employer] Listing saved:", jobId);
+      saveEmployerListing(phone_number, employerData).then(async (result) => {
+        if (!result) return;
+        console.log(`[employer] Listing ${result.isNew ? "created" : "enriched"}:`, result.id);
+        if (!result.isNew) return;
         const link = await getDashboardLink(user.id);
         if (!link) return;
         const dashMsg = `Your listing is live on MainGig. View and manage it here: ${link}`;

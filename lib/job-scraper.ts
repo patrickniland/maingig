@@ -1,4 +1,3 @@
-import axios from "axios";
 import * as cheerio from "cheerio";
 import { supabase } from "./supabase";
 
@@ -51,8 +50,11 @@ async function scrapeCategory(query: string): Promise<ScrapedJob[]> {
   let html: string;
 
   try {
-    const response = await axios.get(url, { headers: HEADERS, timeout: 15000 });
-    html = response.data as string;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    const response = await fetch(url, { headers: HEADERS, signal: controller.signal });
+    clearTimeout(timeout);
+    html = await response.text();
   } catch (err) {
     console.error(`[scraper] Failed to fetch "${query}":`, err);
     return [];
