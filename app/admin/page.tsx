@@ -7,7 +7,7 @@ type Listing = {
   location_area: string | null;
   employment_type: string | null;
   active: boolean;
-  created_at: string;
+  posted_at: string;
   employers: {
     business_name: string;
     contact_name: string | null;
@@ -27,10 +27,10 @@ async function getListings(): Promise<Listing[]> {
   const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
   const { data } = await supabase
     .from("jobs")
-    .select("id, title, location_area, employment_type, active, created_at, employers(business_name, contact_name, contact_phone)")
+    .select("id, title, location_area, employment_type, active, posted_at, employers(business_name, contact_name, contact_phone)")
     .eq("source", "informal")
-    .gte("created_at", since)
-    .order("created_at", { ascending: false });
+    .gte("posted_at", since)
+    .order("posted_at", { ascending: false });
   return (data ?? []) as unknown as Listing[];
 }
 
@@ -119,7 +119,7 @@ export default async function AdminPage({
                     </td>
                     <td className="px-4 py-3 text-gray-500">{listing.location_area ?? "—"}</td>
                     <td className="px-4 py-3 text-gray-400 whitespace-nowrap text-xs">
-                      {formatDate(listing.created_at)}
+                      {formatDate(listing.posted_at)}
                     </td>
                     <td className="px-4 py-3">
                       <span

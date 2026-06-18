@@ -18,7 +18,7 @@ export type JobPosting = {
   title: string;
   location_area: string | null;
   employment_type: string | null;
-  created_at: string;
+  posted_at: string;
   active: boolean;
 };
 
@@ -280,7 +280,7 @@ function EmployerTab({ jobPostings }: { jobPostings: JobPosting[] }) {
               <p className="text-xs text-gray-400 mb-1">
                 {[job.location_area, job.employment_type].filter(Boolean).join(" · ")}
               </p>
-              <p className="text-xs text-gray-400">Posted {formatDate(job.created_at)}</p>
+              <p className="text-xs text-gray-400">Posted {formatDate(job.posted_at)}</p>
             </div>
           ))}
         </div>

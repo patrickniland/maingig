@@ -44,9 +44,9 @@ async function getDashboardData(token: string): Promise<{
   if (employer) {
     const { data: jobs, error: jobsError } = await supabase
       .from("jobs")
-      .select("id, title, location_area, employment_type, created_at, active")
+      .select("id, title, location_area, employment_type, posted_at, active")
       .eq("employer_id", employer.id)
-      .order("created_at", { ascending: false });
+      .order("posted_at", { ascending: false });
     console.log("[dashboard] jobs query employer_id:", employer.id, "→ count:", jobs?.length ?? 0, "error:", jobsError?.message);
     console.log("[dashboard] jobs data:", JSON.stringify(jobs));
     jobPostings = (jobs ?? []) as JobPosting[];
