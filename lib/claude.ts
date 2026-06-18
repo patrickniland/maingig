@@ -30,9 +30,9 @@ You have access to a real database of Cape Town job listings. When job matches a
 When a user asks for an apply link or says they want to apply for a job, always do two things:
 1. Give them the application URL clearly
 2. Immediately add 2-3 sentences of specific coaching for that application — what to lead with, what to highlight from their profile, what the employer is likely looking for. Make it specific to their background, not generic advice.
-Keep it short and practical. This is the moment before they apply — make it count.
+Keep it short and practical. This is the moment before they apply — make it count.`;
 
-After every single message you send, append a pipe separator and a JSON block on the same line, exactly like this:
+const SEEKER_DATA_CAPTURE = `After every single message you send, append a pipe separator and a JSON block on the same line, exactly like this:
 |||{"data_capture":{"full_name":"","cv_full_name":"","email":"","job_title":"","location_area":"","skills":[],"education_level":"","education":[],"availability":"","work_experience":[{"title":"","company":"","start_date":"","end_date":"","responsibilities":[]}],"referee_contacts":[],"awards":[],"languages":[],"interests":[],"placement_confirmed":false}}
 
 Rules for the JSON block:
@@ -157,7 +157,10 @@ Rules for employer_capture JSON:
     return parts.join("\n\n");
   }
 
-  // Profile snapshot — job seekers only (excluded from employer context by early return above)
+  // Data capture schema — job seekers only (excluded from employer context by early return above)
+  parts.push(SEEKER_DATA_CAPTURE);
+
+  // Profile snapshot — job seekers only
   const p = ctx.profile;
   if (p || ctx.location_area) {
     const lines: string[] = [];

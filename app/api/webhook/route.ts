@@ -374,7 +374,7 @@ export async function POST(req: NextRequest) {
     if (!user) {
       const { data: newUser, error } = await supabase
         .from("users")
-        .insert({ phone_number, status: "seeking", preferred_language: null })
+        .insert({ phone_number, status: "seeking", preferred_language: null, current_mode: null })
         .select()
         .single();
 
