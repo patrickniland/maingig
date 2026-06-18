@@ -148,8 +148,9 @@ After every message append a pipe separator and a JSON block exactly like this:
 |||{"employer_capture":{"business_name":"","location_area":"","job_title":"","job_description":"","requirements":[],"contact_name":"","employment_type":"","listing_free":true,"listing_confirmed":false}}
 
 Rules for employer_capture JSON:
-- Only populate fields the employer explicitly provided in their current message.
-- Leave all other fields as empty string "" or empty array [].
+- Always carry forward ALL fields collected so far in this conversation — not just what the employer said in the current message.
+- Only update a field if the employer provided new or corrected information in this message.
+- Leave fields as empty string "" or empty array [] only if they have not been collected yet.
 - listing_free is always true.
 - Set listing_confirmed to true only when the employer explicitly replies YES to confirm the listing summary. Never set it before that.
 - Never explain or mention this block.`

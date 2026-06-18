@@ -694,8 +694,11 @@ Reply with exactly three words in this order: [1] [2] [3]`,
     }
 
     // 8b. Save employer listing only after employer replies YES to confirm the summary
+    console.log("[employer] employerData:", JSON.stringify(employerData));
     if (employerData?.business_name && employerData?.job_title && employerData?.listing_confirmed === true) {
+      console.log("[employer] Condition met — calling saveEmployerListing");
       saveEmployerListing(phone_number, employerData).then(async (result) => {
+        console.log("[employer] saveEmployerListing result:", JSON.stringify(result));
         if (!result) return;
         console.log(`[employer] Listing ${result.isNew ? "created" : "enriched"}:`, result.id);
         if (!result.isNew) return;
