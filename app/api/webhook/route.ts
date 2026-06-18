@@ -310,37 +310,37 @@ async function saveEmployerListing(
   const employmentType = normaliseEmploymentType(employer.employment_type);
   console.log("[saveEmployerListing] employmentType:", employmentType, "from:", employer.employment_type);
 
-  // Dedup: if a listing with the same title already exists for this employer,
-  // enrich it with any new details rather than creating a duplicate.
-  const { data: existingJob, error: jobLookupError } = await supabase
-    .from("jobs")
-    .select("id")
-    .eq("employer_id", employerId)
-    .eq("title", employer.job_title!)
-    .maybeSingle();
+  try {
+    // Dedup: if a listing with the same title already exists for this employer,
+    // enrich it with any new details rather than creating a duplicate.
+    console.log("[saveEmployerListing] checking for existing job, title:", employer.job_title, "employerId:", employerId);
+    const { data: existingJob, error: jobLookupError } = await supabase
+      .from("jobs")
+      .select("id")
+      .eq("employer_id", employerId)
+      .eq("title", employer.job_title!)
+      .maybeSingle();
 
-  console.log("[saveEmployerListing] existing job lookup:", { existingJob, jobLookupError });
+    console.log("[saveEmployerListing] existing job lookup:", { existingJob, jobLookupError });
 
-  if (existingJob) {
-    const updates: Record<string, unknown> = {};
-    if (employer.job_description) updates.description = employer.job_description;
-    if (employer.requirements?.length) updates.requirements = employer.requirements;
-    if (employer.location_area) updates.location_area = employer.location_area;
-    if (employmentType) updates.employment_type = employmentType;
-    if (applicationUrl) updates.application_url = applicationUrl;
+    if (existingJob) {
+      const updates: Record<string, unknown> = {};
+      if (employer.job_description) updates.description = employer.job_description;
+      if (employer.requirements?.length) updates.requirements = employer.requirements;
+      if (employer.location_area) updates.location_area = employer.location_area;
+      if (employmentType) updates.employment_type = employmentType;
+      if (applicationUrl) updates.application_url = applicationUrl;
 
-    if (Object.keys(updates).length > 0) {
-      const { error: enrichError } = await supabase.from("jobs").update(updates).eq("id", existingJob.id);
-      console.log("[saveEmployerListing] enrich error:", enrichError);
+      if (Object.keys(updates).length > 0) {
+        const { error: enrichError } = await supabase.from("jobs").update(updates).eq("id", existingJob.id);
+        console.log("[saveEmployerListing] enrich error:", enrichError);
+      }
+      console.log("[employer] Enriched existing listing:", existingJob.id);
+      return { id: existingJob.id, isNew: false };
     }
-    console.log("[employer] Enriched existing listing:", existingJob.id);
-    return { id: existingJob.id, isNew: false };
-  }
 
-  // Create new job listing
-  const { data: job, error: jobError } = await supabase
-    .from("jobs")
-    .insert({
+    // Create new job listing
+    const insertPayload = {
       employer_id: employerId,
       title: employer.job_title!,
       description: employer.job_description ?? null,
@@ -351,18 +351,27 @@ async function saveEmployerListing(
       active: true,
       verified: true,
       source: "informal",
-    })
-    .select("id")
-    .single();
+    };
+    console.log("[saveEmployerListing] attempting job insert:", JSON.stringify(insertPayload));
 
-  console.log("[saveEmployerListing] job insert:", { job, jobError });
+    const { data: job, error: jobError } = await supabase
+      .from("jobs")
+      .insert(insertPayload)
+      .select("id")
+      .single();
 
-  if (jobError || !job) {
-    console.error("[saveEmployerListing] Failed to create job listing:", jobError);
+    console.log("[saveEmployerListing] job insert result:", { job, jobError });
+
+    if (jobError || !job) {
+      console.error("[saveEmployerListing] Failed to create job listing:", JSON.stringify(jobError));
+      return null;
+    }
+
+    return { id: job.id, isNew: true };
+  } catch (err) {
+    console.error("[saveEmployerListing] Unexpected thrown error:", err);
     return null;
   }
-
-  return { id: job.id, isNew: true };
 }
 
 export async function POST(req: NextRequest) {
