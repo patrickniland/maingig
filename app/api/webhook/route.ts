@@ -252,11 +252,13 @@ async function saveEmployerListing(
 ): Promise<{ id: string; isNew: boolean } | null> {
   console.log("[saveEmployerListing] called with:", JSON.stringify(employer));
   // Upsert employer record by contact_phone
-  const { data: existingEmployer } = await supabase
+  const { data: existingEmployer, error: lookupError } = await supabase
     .from("employers")
     .select("id, contact_email, contact_phone")
     .eq("contact_phone", phoneNumber)
     .single();
+
+  console.log("[saveEmployerListing] employer lookup:", { existingEmployer, lookupError });
 
   let employerId: string;
   let contactEmail: string | null = null;
@@ -266,12 +268,12 @@ async function saveEmployerListing(
     employerId = existingEmployer.id;
     contactEmail = existingEmployer.contact_email ?? null;
     contactPhone = existingEmployer.contact_phone ?? phoneNumber;
-    // Always update with captured data, including promoting from "Pending" to real business name
-    await supabase.from("employers").update({
+    const { error: updateError } = await supabase.from("employers").update({
       ...(employer.business_name && { business_name: employer.business_name }),
       ...(employer.location_area && { location_area: employer.location_area }),
       ...(employer.contact_name && { contact_name: employer.contact_name }),
     }).eq("id", employerId);
+    console.log("[saveEmployerListing] employer update error:", updateError);
   } else {
     const { data: newEmployer, error } = await supabase
       .from("employers")
@@ -288,12 +290,16 @@ async function saveEmployerListing(
       .select("id")
       .single();
 
+    console.log("[saveEmployerListing] employer insert:", { newEmployer, error });
+
     if (error || !newEmployer) {
-      console.error("[employer] Failed to create employer:", error);
+      console.error("[saveEmployerListing] Failed to create employer:", error);
       return null;
     }
     employerId = newEmployer.id;
   }
+
+  console.log("[saveEmployerListing] employerId:", employerId);
 
   const applicationUrl = contactEmail
     ? `mailto:${contactEmail}`
@@ -302,15 +308,18 @@ async function saveEmployerListing(
     : null;
 
   const employmentType = normaliseEmploymentType(employer.employment_type);
+  console.log("[saveEmployerListing] employmentType:", employmentType, "from:", employer.employment_type);
 
   // Dedup: if a listing with the same title already exists for this employer,
   // enrich it with any new details rather than creating a duplicate.
-  const { data: existingJob } = await supabase
+  const { data: existingJob, error: jobLookupError } = await supabase
     .from("jobs")
     .select("id")
     .eq("employer_id", employerId)
     .eq("title", employer.job_title!)
     .maybeSingle();
+
+  console.log("[saveEmployerListing] existing job lookup:", { existingJob, jobLookupError });
 
   if (existingJob) {
     const updates: Record<string, unknown> = {};
@@ -321,7 +330,8 @@ async function saveEmployerListing(
     if (applicationUrl) updates.application_url = applicationUrl;
 
     if (Object.keys(updates).length > 0) {
-      await supabase.from("jobs").update(updates).eq("id", existingJob.id);
+      const { error: enrichError } = await supabase.from("jobs").update(updates).eq("id", existingJob.id);
+      console.log("[saveEmployerListing] enrich error:", enrichError);
     }
     console.log("[employer] Enriched existing listing:", existingJob.id);
     return { id: existingJob.id, isNew: false };
@@ -345,8 +355,10 @@ async function saveEmployerListing(
     .select("id")
     .single();
 
+  console.log("[saveEmployerListing] job insert:", { job, jobError });
+
   if (jobError || !job) {
-    console.error("[employer] Failed to create job listing:", jobError);
+    console.error("[saveEmployerListing] Failed to create job listing:", jobError);
     return null;
   }
 
