@@ -301,6 +301,10 @@ async function saveEmployerListing(
 
   console.log("[saveEmployerListing] employerId:", employerId);
 
+  // Write employer_id onto the user record so the dashboard can look up jobs
+  // directly without relying on phone number format matching
+  await supabase.from("users").update({ employer_id: employerId }).eq("phone_number", phoneNumber).then();
+
   const applicationUrl = contactEmail
     ? `mailto:${contactEmail}`
     : contactPhone
