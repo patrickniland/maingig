@@ -552,6 +552,7 @@ export async function POST(req: NextRequest) {
 
     const orderedHistory: Message[] = (history ?? []).reverse();
     const hasSpokenBefore = (history ?? []).some((m) => m.message_role === "assistant");
+    console.log("[profile] userProfile loaded:", userProfile ? JSON.stringify(Object.keys(userProfile)) : "null");
 
     // 5. Derive mode from user record; intent classification can update it this turn
     let isEmployerMode = user.current_mode === "hiring";
@@ -627,6 +628,8 @@ Reply with exactly three words in this order: [1] [2] [3]`,
             return [];
           });
 
+          console.log("[job-matcher] wantsJobs matches found:", jobMatches.length);
+
           if (jobMatches.length) {
             supabase
               .from("user_profiles")
@@ -652,26 +655,34 @@ Reply with exactly three words in this order: [1] [2] [3]`,
       console.error("[intent] Classification error:", intentErr);
     }
 
-    // Auto-trigger: silently refresh dashboard matches when profile is rich enough.
-    // Saves to DB only — does NOT pass to Sisi (avoids surfacing matches on every response).
+    // Auto-trigger: when profile is rich enough, run matcher and pass results to Sisi.
+    // Only fires when wantsJobs intent was not already detected.
     if (!wantsJobs && !isEmployerMode && jobMatches.length === 0 && userProfile) {
       const profileRich =
         ((userProfile.skills?.length ?? 0) > 0 || (userProfile.work_experience?.length ?? 0) > 0) &&
         user.location_area;
 
+      console.log("[job-matcher] auto-trigger check — profileRich:", !!profileRich);
+
       if (profileRich) {
-        matchJobs(
+        const autoMatches = await matchJobs(
           userProfile as Parameters<typeof matchJobs>[0],
           user.location_area ?? null,
           body
-        ).then((autoMatches) => {
-          if (autoMatches.length) {
-            supabase
-              .from("user_profiles")
-              .upsert({ user_id: user.id, last_job_matches: autoMatches }, { onConflict: "user_id" })
-              .then();
-          }
-        }).catch(() => {});
+        ).catch((err) => {
+          console.error("[job-matcher] auto-trigger error:", err);
+          return [];
+        });
+
+        console.log("[job-matcher] auto-trigger matches:", autoMatches.length);
+
+        if (autoMatches.length) {
+          jobMatches = autoMatches;
+          supabase
+            .from("user_profiles")
+            .upsert({ user_id: user.id, last_job_matches: autoMatches }, { onConflict: "user_id" })
+            .then();
+        }
       }
     }
 

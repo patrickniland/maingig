@@ -101,7 +101,7 @@ function buildSystemPrompt(ctx: UserContext): string {
 
   // Dashboard link rule — always present to prevent Sisi echoing old links from history
   parts.push(
-    `Never copy, paste, or repeat a dashboard link URL from the conversation history — those links expire and sending a stale one is confusing. If the user needs their dashboard link, tell them to ask and it will be sent. The only time you include a link is when one is explicitly handed to you below.`
+    `Never copy or repeat a dashboard link URL from the conversation history — those links expire and a stale one won't work. The only time you include a link is when one is explicitly handed to you below.`
   );
 
   // Dashboard link — injected only when the user explicitly asked for it this turn
