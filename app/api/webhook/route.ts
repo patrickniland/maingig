@@ -751,17 +751,29 @@ Reply with exactly four words in this order: [1] [2] [3] [4]`,
     }
 
     // 6. Call Claude
-    const rawReply = await callClaude(orderedHistory, body, {
-      full_name: user.full_name ?? null,
-      preferred_language: user.preferred_language as Language,
-      hasSpokenBefore,
-      languageSwitched,
-      jobMatches: jobMatches.length ? jobMatches : undefined,
-      dashboardLink,
-      current_mode: user.current_mode as "seeking" | "hiring",
-      location_area: user.location_area ?? null,
-      profile: userProfile ?? null,
-    });
+    let rawReply: string;
+    try {
+      rawReply = await callClaude(orderedHistory, body, {
+        full_name: user.full_name ?? null,
+        preferred_language: user.preferred_language as Language,
+        hasSpokenBefore,
+        languageSwitched,
+        jobMatches: jobMatches.length ? jobMatches : undefined,
+        dashboardLink,
+        current_mode: user.current_mode as "seeking" | "hiring",
+        location_area: user.location_area ?? null,
+        profile: userProfile ?? null,
+      });
+    } catch (claudeErr) {
+      console.error("[claude] callClaude failed (possible timeout):", claudeErr);
+      const fallback = "Sorry, I'm having a moment. Send me that again?";
+      await sendWhatsAppMessage(from, fallback).catch(() => {});
+      await supabase.from("conversations").insert([
+        { user_id: user.id, message_role: "user", message_content: body },
+        { user_id: user.id, message_role: "assistant", message_content: fallback },
+      ]);
+      return new NextResponse("OK", { status: 200 });
+    }
 
     console.log("[1] Raw Claude reply:", rawReply);
 

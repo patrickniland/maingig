@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { Message, Language } from "./supabase";
 import type { JobMatch } from "./job-matcher";
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 25_000 });
 
 const SISI_SYSTEM_PROMPT = `You are Sisi, a career coach on WhatsApp for MainGig. You help South Africans find work.
 
